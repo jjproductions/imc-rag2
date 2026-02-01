@@ -1,0 +1,2 @@
+The Institute of Music for Children (IMC) empowers youth through arts education.
+This sample text is provided for testing the RAG pipeline end-to-end.
