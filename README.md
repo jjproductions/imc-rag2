@@ -33,32 +33,38 @@ Query: question -> retrieve top-k -> prompt -> Ollama -> stream tokens -> UI
 ## Quick Start
 
 1. **Clone and prepare**
+
    ```bash
    cp .env.example .env
    # Optionally tweak values (API_KEY, OLLAMA_MODEL, etc.)
    ```
 
 2. **Start the stack**
+
    ```bash
    make up
    ```
 
 3. **(Online) Pull the default Ollama model**
+
    ```bash
    make pull-model
    ```
 
 4. **Ingest sample docs**
+
    ```bash
    make ingest path=./docs
    ```
 
 5. **Ask a question (non-streaming)**
+
    ```bash
    make query q="What is IMC?"
    ```
 
 6. **Stream a response (SSE)**
+
    ```bash
    make stream q="What is IMC?"
    ```
@@ -71,10 +77,10 @@ Query: question -> retrieve top-k -> prompt -> Ollama -> stream tokens -> UI
 
 ## Endpoints
 
-- `POST /ingest` — body `{"path": "/absolute/or/mounted/path"}`  
-- `POST /query` — body `{"question":"...", "top_k":5}`  
-- `POST /stream` — body `{"question":"...", "top_k":5}` (SSE with `data: {"delta": "..."}`)  
-- `POST /v1/chat/completions` — OpenAI-compatible; supports `stream: true`  
+- `POST /ingest` — body `{"path": "/absolute/or/mounted/path"}`
+- `POST /query` — body `{"question":"...", "top_k":5}`
+- `POST /stream` — body `{"question":"...", "top_k":5}` (SSE with `data: {"delta": "..."}`)
+- `POST /v1/chat/completions` — OpenAI-compatible; supports `stream: true`
 
 > **Auth:** All endpoints require `Authorization: Bearer <API_KEY>`.
 
@@ -93,19 +99,24 @@ To run fully offline:
    - `~/.ollama` (or export from a similar path) to an external drive
 
 3. Start with **offline env flags**:
+
    ```env
    TRANSFORMERS_OFFLINE=1
    HF_HOME=/models
    ```
+
    Ensure `./models` is mounted to the `rag-api` container (already set in `docker-compose.yml`):
+
    ```yaml
    rag-api:
      volumes:
        - ./models:/models
    ```
+
    And ensure the **Ollama** container has your pre-seeded models under its default volume `ollama_models` (already defined). If you imported them manually, place files under `./ollama_models` and mount accordingly.
 
 4. Bring up the stack:
+
    ```bash
    make up
    ```
@@ -120,11 +131,13 @@ To run fully offline:
 ## Swap LLM or Embedding Model
 
 - **LLM**: Edit `.env`
+
   ```env
   OLLAMA_MODEL=llama3.1:8b-instruct-q4_0
   TEMPERATURE=0.2
   MAX_TOKENS=1024
   ```
+
   Then `make restart` and (if online) `make pull-model`.
 
 - **Embeddings**: Edit `.env`
@@ -135,23 +148,26 @@ To run fully offline:
   ```bash
   make up
   ```
-  *Note:* Qdrant collection is fixed to 1024 dims for `bge-m3`. If you change to a model with different dimension, **create a new collection** or drop and recreate with the correct size.
+  _Note:_ Qdrant collection is fixed to 1024 dims for `bge-m3`. If you change to a model with different dimension, **create a new collection** or drop and recreate with the correct size.
 
 ---
 
 ## cURL Examples
 
 - **Ingest a folder**
+
   ```bash
   curl -fsS -H "Authorization: Bearer $API_KEY"                -H "Content-Type: application/json"                -d "{"path":"$PWD/docs"}"                http://localhost:8000/ingest
   ```
 
 - **Query (non-streaming)**
+
   ```bash
   curl -fsS -H "Authorization: Bearer $API_KEY"                -H "Content-Type: application/json"                -d '{"question":"What is IMC?"}'                http://localhost:8000/query | jq
   ```
 
 - **Stream (SSE)**
+
   ```bash
   curl -N -H "Authorization: Bearer $API_KEY"                -H "Content-Type: application/json"                -d '{"question":"What is IMC?"}'                http://localhost:8000/stream
   ```
@@ -181,7 +197,7 @@ $ make query q="What is IMC?"
   "answer": "The Institute of Music for Children (IMC) empowers youth through arts education (source: docs/policy_snippet.txt#0).",
   "sources": [
     {
-      "doc_id": "docs/policy_snippet.txt",
+      "source_id": "docs/policy_snippet.txt",
       "chunk_id": 0,
       "text": "The Institute of Music for Children (IMC) empowers youth through arts education...",
       "source_path": "/workspace/docs/policy_snippet.txt",

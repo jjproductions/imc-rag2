@@ -1,0 +1,28 @@
+
+# FastAPI stack
+fastapi
+uvicorn[standard]
+python-multipart
+sse-starlette
+
+# Data models & serialization
+pydantic
+pydantic-settings
+orjson
+
+# Embeddings
+sentence-transformers
+numpy
+
+# Vector DB
+qdrant-client
+
+# LLM HTTP client
+httpx
+
+# Document ingestion
+PyPDF2
+markdown
+
+# Testing
+pytest

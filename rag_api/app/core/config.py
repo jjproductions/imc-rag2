@@ -4,13 +4,13 @@ import os
 class Settings(BaseSettings):
     API_KEY: str = "local-key"
 
-    QDRANT_URL: str = "http://qdrant:6333"
-    QDRANT_COLLECTION: str = "imc_corpus"
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_COLLECTION: str = "imc_corpus2"
 
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
 
-    OLLAMA_BASE_URL: str = "http://ollama:11434"
-    OLLAMA_MODEL: str = "llama3.1:8b-instruct-q4_0"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "deepseek-r1:14b"
     TEMPERATURE: float = 0.2
     MAX_TOKENS: int = 1024
 

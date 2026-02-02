@@ -14,12 +14,13 @@ class StreamRequest(BaseModel):
     trace_id: Optional[str] = None
 
 class RetrievedChunk(BaseModel):
-    doc_id: str
-    chunk_id: int
+    source_id: str
+    chunk_id: str
     text: str
     source_path: str
     page: Optional[int] = None
     score: Optional[float] = None
+    section: Optional[str] = None
 
 class AnswerResponse(BaseModel):
     answer: str

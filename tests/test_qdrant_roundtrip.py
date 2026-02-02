@@ -1,5 +1,5 @@
 import pytest
-from qdrant_client import QdrantClient
+import json
 from rag_api.app.core.config import settings
 from rag_api.app.services.qdrant_client import get_qdrant, ensure_collection
 from rag_api.app.services.embeddings import embed_texts
@@ -11,7 +11,7 @@ def test_qdrant_roundtrip():
     ensure_collection(client)
     payloads = [
         {
-            "doc_id": "test_doc",
+            "source_id": "test_doc",
             "chunk_id": 0,
             "text": "The Institute of Music for Children (IMC) is a nonprofit.",
             "source_path": "/tmp/imc.txt",
@@ -24,4 +24,5 @@ def test_qdrant_roundtrip():
     upserted = upsert_payloads(payloads, vectors)
     assert upserted in (0, 1)
     res = search_similar("What is IMC?", top_k=3)
+    # print("Search results:", json.dumps(res))
     assert isinstance(res, list)

@@ -1,3 +1,4 @@
+import json
 from rag_api.app.utils.chunking import chunk_text
 
 def test_chunking_basic():
@@ -5,4 +6,8 @@ def test_chunking_basic():
     chunks = chunk_text(text, chunk_size=800, overlap=100)
     # Expect ceil((2000-800)/(800-100)) + 1 ~= 3 or 4
     assert len(chunks) >= 3
+    print(f"Generated {len(chunks)} chunks:")
+    for i, c in enumerate(chunks):
+        print(f"--- chunk {i} ---")
+        print(c)
     assert all(isinstance(c, str) and len(c) > 0 for c in chunks)
