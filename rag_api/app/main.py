@@ -7,14 +7,15 @@ from app.routes import ingest, query, stream
 
 app = FastAPI(title="Local RAG API", version="1.0.0")
 
-# CORS disabled by default (local only); uncomment if needed
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["http://localhost:3000"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+# Enable CORS so frontends (like OpenWeb UI) can talk to this API.
+# Defaults to allowing all origins for quick testing; restrict in production.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def require_api_key(authorization: str = Header(..., alias="Authorization")):
     print(f"Authorization header: {authorization}")
