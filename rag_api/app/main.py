@@ -62,5 +62,6 @@ app.include_router(query.router, dependencies=[Depends(require_api_key)])
 app.include_router(stream.router, dependencies=[Depends(require_api_key)])
 
 # OpenAI-compatible Chat Completions mounted at /v1
-from app.routes.stream import openai_router
+from app.routes.stream import openai_router, openai_ws_router
 app.include_router(openai_router, prefix="/v1", dependencies=[Depends(require_api_key)])
+app.include_router(openai_ws_router, prefix="/v1")

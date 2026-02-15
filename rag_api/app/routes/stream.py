@@ -1,6 +1,6 @@
 import json, time, uuid, asyncio, anyio, re, hashlib, logging
 from typing import AsyncGenerator, Dict, Any
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -66,6 +66,7 @@ async def stream(req: StreamRequest):
 # ------------------ OpenAI-compatible endpoint ------------------
 
 openai_router = APIRouter(tags=["openai-compat"])
+openai_ws_router = APIRouter(tags=["openai-compat"])
 
 
 INLINE_SOURCE_RE = re.compile(r"\s*\(source:\s*[^)]+\)", flags=re.IGNORECASE)
@@ -94,6 +95,162 @@ def format_sources_block(doc_ids, all_sources):
     return "\n\nSources:\n" + "\n".join(lines)
 
 
+@openai_ws_router.websocket("/chat/completions")
+async def websocket_chat_completions(websocket: WebSocket):
+    await websocket.accept()
+
+    # Manual Auth Check
+    auth_header = websocket.headers.get("authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        logger.warning("WebSocket missing or invalid authorization header")
+        await websocket.close(code=1008)
+        return
+    
+    token = auth_header.split(" ")[1]
+    if token != settings.API_KEY:
+        logger.warning("WebSocket invalid API key")
+        await websocket.close(code=1008)
+        return
+    
+    try:
+        # 1) Receive initial request
+        data = await websocket.receive_text()
+        try:
+            req_json = json.loads(data)
+            req = OpenAIChatCompletionRequest(**req_json)
+        except Exception as e:
+            logger.error(f"Invalid WebSocket payload: {e}")
+            await websocket.send_text(json.dumps({"error": "Invalid JSON or schema"}))
+            await websocket.close(code=1008)
+            return
+
+        # 2) Build RAG context (similar to HTTP endpoint)
+        start = time.time()
+        
+        # Safety check for empty messages
+        if not req.messages:
+             await websocket.send_text(json.dumps({"error": "No messages provided"}))
+             await websocket.close()
+             return
+
+        parsed_message = extract_final_user_message(
+            req.messages[len(req.messages) - 1].content
+        )
+        last_user = next(
+            (m.content for m in reversed(req.messages) if m.role == "user"), ""
+        )
+        top_k = settings.TOP_K
+
+        # Retrieval
+        retrieval_key = make_retrieval_cache_key(
+            parsed_message,
+            top_k,
+            getattr(settings, "INDEX_VERSION", "v1"),
+        )
+        chunks = await retrieval_cache.get(retrieval_key)
+        if chunks is None:
+            chunks = search_similar(last_user, top_k=top_k)
+            await retrieval_cache.set(retrieval_key, chunks)
+
+        messages = build_messages(last_user, chunks)
+        
+        client = get_ollama()
+        model = req.model or settings.OLLAMA_MODEL
+        temperature = req.temperature or settings.TEMPERATURE
+        max_tokens = req.max_tokens or settings.MAX_TOKENS
+        
+        comp_id = f"chatcmpl-{uuid.uuid4().hex}"
+        created = int(time.time())
+        
+        logger.info(f"WebSocket chat/completions request id={comp_id}, model={model}")
+
+        # 3) Stream Response
+        # Initial role chunk
+        first_chunk = {
+            "id": comp_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [
+                {"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}
+            ],
+        }
+        await websocket.send_text(json.dumps(first_chunk))
+        
+        assembled = []
+        all_sources = collect_sources(chunks)
+        used_doc_ids = list(all_sources.keys())
+        
+        async for ev in client.chat_stream(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            raw = ev.get("message", {}).get("content", "")
+            if not raw:
+                continue
+
+            clean = INLINE_SOURCE_RE.sub("", raw)
+            if clean:
+                assembled.append(clean)
+                chunk = {
+                    "id": comp_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": clean},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                await websocket.send_text(json.dumps(chunk))
+                # Yield control to event loop
+                await asyncio.sleep(0)
+
+        # Sources Block
+        sources_block = format_sources_block(used_doc_ids, all_sources)
+        if sources_block:
+            chunk = {
+                "id": comp_id,
+                "object": "chat.completion.chunk",
+                "created": int(time.time()),
+                "model": model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "\n\n" + sources_block},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+            await websocket.send_text(json.dumps(chunk))
+
+        # Finish
+        done_chunk = {
+            "id": comp_id,
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        }
+        await websocket.send_text(json.dumps(done_chunk))
+        await websocket.close()
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected client side")
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}", exc_info=True)
+        try:
+            await websocket.close(code=1011)
+        except:
+            pass
+
+
+
 @openai_router.post("/chat/completions")
 async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Request):
     # 1) Build RAG context (cacheable)
@@ -108,7 +265,7 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
     top_k = settings.TOP_K
 
     logger.debug(
-        f"Inital user message for OpenAI chat/completions: {json.dumps({'q': parsed_message, 'k': top_k, 'time taken': int((time.time() - start) * 1000)})}"
+        f"Non WebSocket:Inital user message for OpenAI chat/completions: {json.dumps({'q': parsed_message, 'k': top_k, 'time taken': int((time.time() - start) * 1000)})}"
     )
     # Optional: use retrieval cache
     retrieval_key = make_retrieval_cache_key(
