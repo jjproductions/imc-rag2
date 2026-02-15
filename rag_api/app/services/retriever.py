@@ -1,9 +1,13 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 import uuid
 from qdrant_client.models import Filter, FieldCondition, MatchValue, SearchParams
 from app.core.config import settings
 from app.services.qdrant_client import get_qdrant, ensure_collection
 from app.services.embeddings import embed_texts, embed_query
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 def upsert_payloads(payloads: List[Dict[str, Any]], vectors):
     client = get_qdrant()
@@ -37,10 +41,44 @@ def upsert_payloads(payloads: List[Dict[str, Any]], vectors):
     client.upsert(collection_name=settings.QDRANT_COLLECTION, points=points)
     return len(to_insert_indices)
 
+def _extract_payload_and_score(item: Any) -> Tuple[Dict[str, Any], float]:
+    """Helper to extract payload and score from various Qdrant return types."""
+    payload = {}
+    score = 0.0
+
+    # 1. Object with attributes (ScoredPoint)
+    if hasattr(item, "payload"):
+        payload = dict(item.payload) if item.payload else {}
+        score = getattr(item, "score", 0.0) or 0.0
+        return payload, score
+
+    # 2. Dictionary
+    if isinstance(item, dict):
+        payload = dict(item.get("payload", {}))
+        score = item.get("score", 0.0)
+        return payload, score
+
+    # 3. Tuple/List (legacy or specific query types)
+    if isinstance(item, (list, tuple)):
+        for sub in item:
+            if hasattr(sub, "payload"):
+                payload = dict(sub.payload) if sub.payload else {}
+            elif isinstance(sub, dict) and "text" in sub:
+                payload = dict(sub)
+            elif isinstance(sub, (int, float)):
+                score = float(sub)
+            elif isinstance(sub, dict) and "score" in sub:
+                score = sub.get("score", 0.0)
+        return payload, score
+
+    return payload, score
+
+
 def search_similar(query: str, top_k: int) -> List[Dict[str, Any]]:
     client = get_qdrant()
     ensure_collection(client)
     q_emb = embed_query(query)
+    
     # Newer qdrant-client uses `query` positional arg for vectors.
     results = client.query_points(
         collection_name=settings.QDRANT_COLLECTION,
@@ -50,68 +88,25 @@ def search_similar(query: str, top_k: int) -> List[Dict[str, Any]]:
         with_payload=True,
         with_vectors=False
     )
+
     # `query_points` may return a QueryResponse with `.result` or a plain list.
     if hasattr(results, "result"):
-        print("Processing results from QueryResponse with .result attribute")
         iterable = results.result
     elif hasattr(results, "points"):
-        print("Processing results from QueryResponse with .points attribute")
         iterable = results.points
     else:
         iterable = results
+
     out = []
     for r in iterable:
-        # Handle multiple return shapes from qdrant-client
-        # 1) objects with `.payload` and `.score`
-        # 2) dicts with 'payload' and 'score'
-        # 3) tuples/lists (various orders)
-        payload = None
-        score = None
-
-        if hasattr(r, "payload"):
-            print("Found payload in object with payload attribute")
-            payload = dict(r.payload)
-            score = getattr(r, "score", None)
-        elif isinstance(r, dict):
-            payload = dict(r.get("payload", {}))
-            score = r.get("score")
-        elif isinstance(r, (list, tuple)):
-            # Try to locate payload and score inside the tuple
-            for item in r:
-                if item is None:
-                    continue
-                if hasattr(item, "payload"):
-                    #print to console
-                    print("Found payload in item with 1 payload attribute")
-                    payload = dict(item.payload)
-                elif isinstance(item, dict) and "text" in item:
-                    print("Found payload in item dict with text key")
-                    payload = dict(item)
-                elif isinstance(item, (int, float)):
-                    print("Found score in item as int/float")
-                    score = float(item)
-                elif isinstance(item, dict) and "score" in item:
-                    print("Found score in item dict with score key")
-                    score = item.get("score")
-            if payload is None:
-                print("Payload is still None after checking all items in tuple/list")
-                # Last-resort: try second element as payload
-                try:
-                    payload = dict(r[1])
-                    print("Found payload in second element of tuple/list")
-                except Exception:
-                    print("Failed to extract payload from second element of tuple/list")
-                    payload = {}
-
-        if payload is None:
-            print("Payload is None, skipping this result")
-            payload = {}
-        try:
-            print("Attempting to set score in payload")
-            payload["score"] = float(score) if score is not None else float(payload.get("score", 0.0))
-        except Exception:
-            print("Failed to set score, defaulting to 0.0")
-            payload["score"] = 0.0
+        payload, score = _extract_payload_and_score(r)
+        
+        if not payload:
+            logger.warning("Retrieved item with empty payload: %s", r)
+            continue
+            
+        payload["score"] = score
         out.append(payload)
-        print(f"Appended payload with source_id: {payload.get('source_id')} and score: {payload.get('score')}")
+        logger.debug("Retrieved: %s (score=%.4f)", payload.get("source_id"), score)
+
     return out

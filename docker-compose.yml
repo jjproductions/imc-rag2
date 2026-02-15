@@ -10,7 +10,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:6333/ready"]
+      test: [ "CMD", "curl", "-fsS", "http://localhost:6333/ready" ]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -22,37 +22,34 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ollama_models:/root/.ollama
+      - ollama_models:/root/.ollama `
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:11434/api/tags"]
+      test: [ "CMD", "curl", "-fsS", "http://localhost:11434/api/tags" ]
       interval: 5s
       timeout: 3s
       retries: 60
 
   rag-api:
     build:
-      context: ./rag_api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: rag_api/Dockerfile
     container_name: rag-api
     restart: unless-stopped
     env_file:
       - .env
     ports:
-      - "8000:8000"
-    depends_on:
-      qdrant:
-        condition: service_healthy
-      ollama:
-        condition: service_healthy
+      - "8001:8000"
     volumes:
       - ./docs:/data/docs:ro
       - ./models:/models
       - ./tests:/app/tests:ro
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-fsS", "http://localhost:8000/health" ]
       interval: 5s
       timeout: 3s
       retries: 60
+    networks:
+      - rag-shared
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:latest
@@ -70,3 +67,9 @@ services:
 volumes:
   qdrant_data:
   ollama_models:
+
+
+networks:
+  rag-shared:
+    name: rag-shared
+    external: true

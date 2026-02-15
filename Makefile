@@ -8,6 +8,10 @@ export $(shell sed 's/=.*//' $(ENV_FILE))
 up:
 	$(COMPOSE) up -d --build
 
+dev:
+	# Starts only rag-api, connecting to host Qdrant/Ollama
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.host.yml up -d --build rag-api
+
 down:
 	$(COMPOSE) down
 
@@ -19,15 +23,15 @@ restart:
 
 ingest:
 	@if [ -z "$(path)" ]; then echo "Usage: make ingest path=./docs"; exit 1; fi
-	curl -fsS -H "Authorization: Bearer $(API_KEY)"         	     -H "Content-Type: application/json"         	     -d "{"path": "$$PWD/$(path)"}"         	     http://localhost:8000/ingest
+	curl -fsS -H "Authorization: Bearer $(API_KEY)"         	     -H "Content-Type: application/json"         	     -d "{"path": "$$PWD/$(path)"}"         	     http://localhost:8001/ingest
 
 query:
 	@if [ -z "$(q)" ]; then echo "Usage: make query q='your question'"; exit 1; fi
-	curl -fsS -H "Authorization: Bearer $(API_KEY)"         	     -H "Content-Type: application/json"         	     -d "{"question": "$(q)"}"         	     http://localhost:8000/query | jq
+	curl -fsS -H "Authorization: Bearer $(API_KEY)"         	     -H "Content-Type: application/json"         	     -d "{"question": "$(q)"}"         	     http://localhost:8001/query | jq
 
 stream:
 	@if [ -z "$(q)" ]; then echo "Usage: make stream q='your question'"; exit 1; fi
-	curl -N -H "Authorization: Bearer $(API_KEY)"         	     -H "Content-Type: application/json"         	     -d "{"question": "$(q)"}"         	     http://localhost:8000/stream
+	curl -N -H "Authorization: Bearer $(API_KEY)"         	     -H "Content-Type: application/json"         	     -d "{"question": "$(q)"}"         	     http://localhost:8001/stream
 
 test:
 	$(COMPOSE) exec rag-api pytest -q

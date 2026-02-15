@@ -1,9 +1,18 @@
 import time
-from fastapi import FastAPI, Depends, Header, HTTPException
+import logging
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routes import ingest, query, stream
+
+# Configure logging
+logging.basicConfig(
+    level=settings.LOG_LEVEL,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Local RAG API", version="1.0.0")
 
@@ -17,11 +26,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def require_api_key(authorization: str = Header(..., alias="Authorization")):
-    print(f"Authorization header: {authorization}")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer" or parts[1] != settings.API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+security = HTTPBearer()
+
+def require_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if credentials.credentials != settings.API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 @app.get("/health", response_class=PlainTextResponse)
 def health():

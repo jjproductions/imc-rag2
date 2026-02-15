@@ -5,8 +5,8 @@ SYSTEM_PROMPT = """You are a careful assistant using retrieved context to answer
 Rules:
 - Use only the provided context for factual claims.
 - If the context is insufficient, say you don't know.
-- Do NOT include inline citations like (source: doc#...).
-- Instead, write a clean answer first.
+- Include inline citations like (source: source_id) where appropriate.
+- Write a clean answer first.
 - Then add a final section exactly formatted as a single line:
     Sources: source_id
     Time: time_taken
@@ -33,6 +33,7 @@ def build_messages(question: str, chunks: List[Dict]) -> list:
 
         Question: {question}
         Answer with citations like (source: doc#chunk)."""
+    # print("USER PROMPT:", user_prompt)
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},

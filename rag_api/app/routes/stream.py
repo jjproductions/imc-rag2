@@ -1,5 +1,5 @@
-import json, time, uuid, asyncio, anyio, re
-from typing import AsyncGenerator, Dict, Any, Iterable
+import json, time, uuid, asyncio, anyio, re, hashlib, logging
+from typing import AsyncGenerator, Dict, Any
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from sse_starlette.sse import EventSourceResponse
@@ -9,6 +9,14 @@ from app.services.retriever import search_similar
 from app.services.prompt import build_messages
 from app.services.llm import get_ollama
 from app.core.config import settings
+from app.utils.caching import (
+    extract_final_user_message,
+    make_retrieval_cache_key,
+    make_cache_key
+)
+from app.utils.ttlcache import answer_cache, retrieval_cache
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["stream"])
 
@@ -49,7 +57,7 @@ async def stream(req: StreamRequest):
                 ),
             }
 
-    print(
+    logger.info(
         f"Starting SSE stream for trace_id={trace_id} with top_k={top_k} completed in {total_ms} ms"
     )
     return EventSourceResponse(event_generator(), media_type="text/event-stream")
@@ -60,40 +68,90 @@ async def stream(req: StreamRequest):
 openai_router = APIRouter(tags=["openai-compat"])
 
 
+INLINE_SOURCE_RE = re.compile(r"\s*\(source:\s*[^)]+\)", flags=re.IGNORECASE)
+
+
+def collect_sources(chunks):
+    sources = {}
+    for c in chunks:
+        payload = getattr(c, "payload", None) or c.get("payload", {})
+        doc_id = payload.get("source_id") or payload.get("doc_id")
+        title = payload.get("title") or payload.get("file_name") or doc_id
+        if doc_id:
+            sources[doc_id] = {"title": title, "doc_id": doc_id}
+    return sources
+
+
+def format_sources_block(doc_ids, all_sources):
+    doc_ids = [d for d in doc_ids if d in all_sources]
+    if not doc_ids:
+        return ""
+    lines = []
+    for i, doc_id in enumerate(doc_ids, start=1):
+        meta = all_sources[doc_id]
+        title = meta["title"] or doc_id
+        lines.append(f"[{i}] {title} ({doc_id})")
+    return "\n\nSources:\n" + "\n".join(lines)
+
+
 @openai_router.post("/chat/completions")
 async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Request):
-    """
-    OpenAI-compatible, but RAG-enabled:
-    - Takes last user message as the question for retrieval.
-    - Augments context and streams model output in OpenAI delta format when stream=True.
-    """
-    # Extract last user message
+    # 1) Build RAG context (cacheable)
+    start = time.time()
+    total_ms = 0
+    parsed_message = extract_final_user_message(
+        req.messages[len(req.messages) - 1].content
+    )
     last_user = next(
         (m.content for m in reversed(req.messages) if m.role == "user"), ""
     )
     top_k = settings.TOP_K
-    chunks = search_similar(last_user, top_k=top_k)
+
+    logger.debug(
+        f"Inital user message for OpenAI chat/completions: {json.dumps({'q': parsed_message, 'k': top_k, 'time taken': int((time.time() - start) * 1000)})}"
+    )
+    # Optional: use retrieval cache
+    retrieval_key = make_retrieval_cache_key(
+        parsed_message,
+        top_k,
+        getattr(settings, "INDEX_VERSION", "v1"),
+    )
+    chunks = await retrieval_cache.get(retrieval_key)
+    if chunks is None:
+        chunks = search_similar(last_user, top_k=top_k)
+        await retrieval_cache.set(retrieval_key, chunks)
+
     messages = build_messages(last_user, chunks)
 
-    client = get_ollama()  # your adapter (with async chat_stream/chat_once)
+    client = get_ollama()
     model = req.model or settings.OLLAMA_MODEL
     temperature = req.temperature or settings.TEMPERATURE
     max_tokens = req.max_tokens or settings.MAX_TOKENS
+    index_version = getattr(settings, "INDEX_VERSION", "v1")  # bump when corpus changes
+
+    # 2) Stable cache key for the full request (post-build messages!)
+    cache_key = make_cache_key(model, messages, temperature, max_tokens, index_version)
 
     created = int(time.time())
     comp_id = f"chatcmpl-{uuid.uuid4().hex}"
-    print(
+    logger.info(
         f"OpenAI chat/completions request id={comp_id}, model={model}, stream={req.stream}"
     )
 
-    # ── STREAMING ────────────────────────────────────────────────────────────────
+    # 3) STREAMING PATH
     if req.stream:
-        print("Processing streaming OpenAI chat completion request")
-        start = time.time()
-        total_ms = 0
+        logger.debug("Processing streaming OpenAI chat completion request. Time taken: %s", int((time.time() - start) * 1000))
+
+        # If this exact turn already completed (rare but possible on retries),
+        # you could serve the cached text as a single delta stream.
+        cached = await answer_cache.get(cache_key)
 
         async def gen():
-            # Initial role delta (optional but common)
+            # Initial padding to force flush any proxy buffers
+            # Many proxies buffer the first 1-4KB. We send 16KB (16384 bytes) of comments.
+            yield ": " + (" " * 16384) + "\n\n"
+            
+            # Initial role chunk
             first_chunk = {
                 "id": comp_id,
                 "object": "chat.completion.chunk",
@@ -103,102 +161,153 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
                     {"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}
                 ],
             }
-            # SSE events must end with a blank line
             yield f"data: {json.dumps(first_chunk)}\n\n"
-            # Cooperative yield to flush immediately
+            logger.debug("Initial role chunk sent. Time taken: %s", int((time.time() - start) * 1000))
             await anyio.sleep(0)
 
-            # Stream upstream deltas as they arrive (no buffering!)
-            async for ev in client.chat_stream(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            ):
-                delta = ev.get("message", {}).get("content", "")
-                if not delta:
-                    continue
-
+            if cached is not None:
+                # Serve cached answer as one streaming sequence for UI parity
                 data = {
                     "id": comp_id,
                     "object": "chat.completion.chunk",
                     "created": int(time.time()),
                     "model": model,
                     "choices": [
-                        {"index": 0, "delta": {"content": delta}, "finish_reason": None}
+                        {
+                            "index": 0,
+                            "delta": {"content": cached},
+                            "finish_reason": None,
+                        }
                     ],
                 }
                 yield f"data: {json.dumps(data)}\n\n"
-                # Help some ASGI stacks flush per token
+                done = {
+                    "id": comp_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }
+                yield f"data: {json.dumps(done)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            # Not cached yet: tee the live stream into a buffer
+            assembled = []
+            all_sources = collect_sources(chunks)
+            used_doc_ids = list(
+                all_sources.keys()
+            )  # simple choice: include all retrieved
+            logger.debug("Assembling live stream. Time taken: %s", int((time.time() - start) * 1000))
+            async for ev in client.chat_stream(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                raw = ev.get("message", {}).get("content", "")
+                if not raw:
+                    continue
+
+                clean = INLINE_SOURCE_RE.sub("", raw)
+                if clean:
+                    assembled.append(clean)
+                    data = {
+                        "id": comp_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": clean},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    logger.debug("Live stream chunk: %s ; Time taken: %s", data, int((time.time() - start) * 1000))
+                    yield f"data: {json.dumps(data)}\n\n"
+                    await anyio.sleep(0)
+
+            # Append final Sources block once
+            sources_block = format_sources_block(used_doc_ids, all_sources)
+            logger.debug("Sources block: %s ; Time taken: %s", sources_block, int((time.time() - start) * 1000))
+            if sources_block:
+                assembled.append("\n\n" + sources_block)
+                tail = {
+                    "id": comp_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": "\n\n" + sources_block},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                logger.debug("Sources chunk: %s ; Time taken: %s", tail, int((time.time() - start) * 1000))
+                yield f"data: {json.dumps(tail)}\n\n"
                 await anyio.sleep(0)
 
-            # Final finish chunk + DONE
-            elapsed_s = round(time.time() - start, 3)
-
-            # Extract nearby/article numbers from the retrieved chunks so the UI can show them
-            source_articles = {}
-            try:
-                for c in chunks:
-                    sid = c.get("source_id") or c.get("source_path")
-                    text = c.get("section_path", "")
-                    if not sid or not text:
-                        continue
-                    # Look for common article patterns (e.g. 'Article 5' or 'Article V')
-                    m_arabic = re.search(r"Article\s+(\d+)", text, re.IGNORECASE)
-                    m_roman = re.search(r"Article\s+([IVXLCDM]+)", text, re.IGNORECASE)
-                    found = None
-                    if m_arabic:
-                        found = f"Article {m_arabic.group(1)}"
-                    elif m_roman:
-                        found = f"Article {m_roman.group(1).upper()}"
-                    if found:
-                        source_articles.setdefault(sid, set()).add(found)
-            except Exception:
-                source_articles = {}
-
-            # Normalize sets to lists
-            source_articles = (
-                {k: list(v) for k, v in source_articles.items()}
-                if source_articles
-                else {}
-            )
-
+            # Finish
             done = {
                 "id": comp_id,
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": model,
                 "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                "usage": {"time_s": elapsed_s},
-                "time_taken_s": elapsed_s,
-                "time_taken": f"Time Taken: {elapsed_s}s",
-                "source_articles": source_articles,
             }
-            print(
-                f"Completed streaming response for id={comp_id} in {elapsed_s} seconds"
-            )
+            logger.debug("Done chunk: %s ; Time taken: %s", done, int((time.time() - start) * 1000))    
             yield f"data: {json.dumps(done)}\n\n"
             yield "data: [DONE]\n\n"
 
+            total_ms = int((time.time() - start) * 1000)
+            usage = {"top_k": top_k, "latency_ms": total_ms}
+            logger.info(
+                f"OpenAI chat/completions request id={comp_id}, model={model}, stream={req.stream} completed in {total_ms} ms"
+            )
+            # Cache the full assembled text for the follow-up non-streaming call
+            final_text = "".join(assembled)
+            await answer_cache.set(cache_key, final_text)
+
+        
         return StreamingResponse(
             gen(),
-            media_type="text/event-stream",
+            media_type="text/event-stream; charset=utf-8",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # important if any nginx is in the path
+                "X-Accel-Buffering": "no",
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "X-Content-Type-Options": "nosniff",
             },
         )
 
-    # ── NON-STREAMING ───────────────────────────────────────────────────────────
-    print("Processing non-streaming OpenAI chat completion request")
-    resp = await client.chat_once(  # async call for consistency
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    content = resp.get("message", {}).get("content", "")
+    # 4) NON‑STREAMING PATH — return cached answer if available
+    logger.debug("Processing non-streaming OpenAI chat completion request")
+    cached = await answer_cache.get(cache_key)
+    if cached is not None:
+        content = cached
+    else:
+        # Fallback: run once (this will be rare if the stream path ran first)
+        logger.debug("No cached answer found for non-streaming request, running LLM once")
+        resp = await client.chat_once(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        raw = resp.get("message", {}).get("content", "") or ""
+        content = INLINE_SOURCE_RE.sub("", raw)
+        # Optionally append sources (same rules as streaming)
+        all_sources = collect_sources(chunks)
+        sources_block = format_sources_block(list(all_sources.keys()), all_sources)
+        if sources_block:
+            content = content.rstrip() + "\n\n" + sources_block
+        await answer_cache.set(cache_key, content)  # seed cache for future retries
+
     data = {
         "id": comp_id,
         "object": "chat.completion",

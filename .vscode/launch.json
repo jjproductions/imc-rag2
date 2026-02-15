@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to FastAPI (debugpy)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5677
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "${workspaceFolder}"
+        }
+      ],
+      "subProcess": true
+    },
+    {
+      "name": "Launch FastAPI (debugpy)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "debugpy",
+      "args": [
+        "--listen",
+        "0.0.0.0:5677",
+        "--wait-for-client",
+        "-m",
+        "uvicorn",
+        "rag_api.app.main:app",
+        "--reload",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8003"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

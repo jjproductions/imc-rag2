@@ -1,0 +1,9 @@
+version: "3.8"
+
+services:
+  rag-api:
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy

@@ -2,6 +2,7 @@
 # FastAPI stack
 fastapi
 uvicorn[standard]
+anyio
 python-multipart
 sse-starlette
 
@@ -26,3 +27,4 @@ markdown
 
 # Testing
 pytest
+debugpy

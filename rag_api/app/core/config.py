@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     TEMPERATURE: float = 0.2
     MAX_TOKENS: int = 1024
 
+    VECTOR_SIZE: int = 1024
+    LOG_LEVEL: str = "INFO"
+
     TOP_K: int = 5
     CHUNK_SIZE: int = 800
     CHUNK_OVERLAP: int = 100

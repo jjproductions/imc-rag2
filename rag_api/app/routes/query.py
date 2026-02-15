@@ -1,10 +1,13 @@
 import time
+import logging
 from fastapi import APIRouter
 from app.models.schemas import QueryRequest, AnswerResponse, RetrievedChunk
 from app.services.retriever import search_similar
 from app.services.prompt import build_messages
 from app.services.llm import get_ollama
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["query"])
 
@@ -26,7 +29,7 @@ def query(req: QueryRequest):
         "top_k": top_k,
         "latency_ms": int((time.time() - t0) * 1000),
     }
-    print(f"Query answered in {usage['latency_ms']} ms using top_k={top_k}")
+    logger.info(f"Query answered in {usage['latency_ms']} ms using top_k={top_k}")
     sources = []
     for c in chunks:
         # Be defensive: skip results that don't include required fields

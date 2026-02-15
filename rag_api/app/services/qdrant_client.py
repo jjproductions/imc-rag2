@@ -14,7 +14,7 @@ def ensure_collection(client: QdrantClient):
         client.create_collection(
             collection_name=settings.QDRANT_COLLECTION,
             vectors_config=VectorParams(
-                size=1024,
+            size=settings.VECTOR_SIZE,
                 distance=Distance.COSINE,
             ),
         )

@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  rag-api:
+    # Connect to host services
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    # Remove dependencies on internal containers
+    depends_on: []
+    # Allow container to resolve 'host.docker.internal'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Disable internal services by assigning them to a profile that we won't activate
+  qdrant:
+    profiles: [ "disable" ]
+
+  ollama:
+    profiles: [ "disable" ]
+
+  openwebui:
+    profiles: [ "disable" ]

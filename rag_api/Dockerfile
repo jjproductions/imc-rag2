@@ -8,9 +8,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends             curl             && rm -rf /var/lib/apt/lists/*
 
 # Python deps (minimal & offline-friendly)
-RUN pip install --no-cache-dir             fastapi==0.115.5             uvicorn[standard]==0.30.6             python-multipart==0.0.9             sentence-transformers==3.0.1             qdrant-client==1.9.1             pydantic==2.9.2             pydantic-settings==2.6.1             sse-starlette==2.2.1             PyPDF2==3.0.1             httpx==0.27.2             markdown==3.6             orjson==3.10.7             pytest==8.3.3
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app /app/app
+COPY rag_api/app /app/app
 
 EXPOSE 8000
 
