@@ -4,6 +4,8 @@ import os
 class Settings(BaseSettings):
     API_KEY: str = "local-key"
 
+    APP_NAME: str = "Local IMC Chatbot"
+
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION: str = "imc_corpus2"
 
@@ -23,6 +25,8 @@ class Settings(BaseSettings):
 
     TRANSFORMERS_OFFLINE: int = int(os.getenv("TRANSFORMERS_OFFLINE", "0"))
     HF_HOME: str = os.getenv("HF_HOME", "/models")
+    
+    DOC_BASE_URL: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

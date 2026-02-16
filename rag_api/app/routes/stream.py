@@ -1,4 +1,5 @@
 import json, time, uuid, asyncio, anyio, re, hashlib, logging
+from urllib.parse import quote
 from typing import AsyncGenerator, Dict, Any
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -75,23 +76,101 @@ INLINE_SOURCE_RE = re.compile(r"\s*\(source:\s*[^)]+\)", flags=re.IGNORECASE)
 def collect_sources(chunks):
     sources = {}
     for c in chunks:
-        payload = getattr(c, "payload", None) or c.get("payload", {})
+        # Check if 'c' is already the payload (dict) or if it has a .payload attribute
+        if hasattr(c, "payload"):
+            payload = getattr(c, "payload", {})
+            if hasattr(payload, "dict"): # if it's a pydantic model or similar
+                 payload = payload.dict()
+            elif not isinstance(payload, dict):
+                 payload = dict(payload)
+        elif isinstance(c, dict):
+            # It might be { "payload": {...} } or just { "source_id": ... }
+            if "payload" in c and isinstance(c["payload"], dict):
+                payload = c["payload"]
+            else:
+                payload = c
+        else:
+            payload = {}
+
         doc_id = payload.get("source_id") or payload.get("doc_id")
         title = payload.get("title") or payload.get("file_name") or doc_id
+        
+        # 'page' might be a single int, or 'pages' a list [3]
+        page = payload.get("page")
+        pages_list = payload.get("pages")
+        
         if doc_id:
-            sources[doc_id] = {"title": title, "doc_id": doc_id}
+            if doc_id not in sources:
+                sources[doc_id] = {"title": title, "pages": set()}
+            
+            if page is not None:
+                sources[doc_id]["pages"].add(page)
+            
+            if pages_list and isinstance(pages_list, list):
+                for p in pages_list:
+                    sources[doc_id]["pages"].add(p)
     return sources
 
 
 def format_sources_block(doc_ids, all_sources):
-    doc_ids = [d for d in doc_ids if d in all_sources]
-    if not doc_ids:
+    # deduplicate while preserving order if possible (though doc_ids input might have dups)
+    seen = set()
+    unique_ids = []
+    for d in doc_ids:
+        if d in all_sources and d not in seen:
+            unique_ids.append(d)
+            seen.add(d)
+            
+    if not unique_ids:
         return ""
+        
     lines = []
-    for i, doc_id in enumerate(doc_ids, start=1):
+    base_url = settings.DOC_BASE_URL
+
+    for i, doc_id in enumerate(unique_ids, start=1):
         meta = all_sources[doc_id]
         title = meta["title"] or doc_id
-        lines.append(f"[{i}] {title} ({doc_id})")
+        
+        # Handle "pages" being a set (from collect_sources) or a list/int from raw payload
+        raw_pages = meta["pages"]
+        if isinstance(raw_pages, set):
+             pages = sorted(list(raw_pages))
+        elif isinstance(raw_pages, list):
+             pages = sorted(raw_pages)
+        elif isinstance(raw_pages, int):
+             pages = [raw_pages]
+        else:
+             pages = []
+
+        page_str = ""
+        if pages:
+            # Format as " (Page 1)" or " (Pages 1, 3)"
+            if len(pages) == 1:
+                page_str = f" (Page {pages[0]})"
+            else:
+                page_str = f" (Pages {', '.join(map(str, pages))})"
+        
+        if base_url:
+            # Construct Link
+            clean_path = doc_id
+            if clean_path.startswith("../"):
+                clean_path = clean_path.replace("../", "")
+            if clean_path.startswith("./"):
+                clean_path = clean_path[2:]
+            if clean_path.startswith("data/docs/"): # Common pattern if ingested from root
+                clean_path = clean_path.replace("data/docs/", "", 1)
+                
+            # Encode spaces and special chars, preserve slashes
+            clean_path = quote(clean_path, safe='/')
+            
+            url = f"{base_url.rstrip('/')}/{clean_path.lstrip('/')}"
+            if pages and str(url).lower().endswith(".pdf"):
+                 url += f"#page={pages[0]}"
+            
+            lines.append(f"[{i}] [{title}{page_str}]({url})")
+        else:
+            lines.append(f"[{i}] {title}{page_str}")
+        
     return "\n\nSources:\n" + "\n".join(lines)
 
 

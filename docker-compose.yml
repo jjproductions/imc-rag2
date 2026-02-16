@@ -43,6 +43,8 @@ services:
       - ./docs:/data/docs:ro
       - ./models:/models
       - ./tests:/app/tests:ro
+    environment:
+      - QDRANT_COLLECTION=${QDRANT_COLLECTION:-board-policies}
     healthcheck:
       test: [ "CMD", "curl", "-fsS", "http://localhost:8000/health" ]
       interval: 5s

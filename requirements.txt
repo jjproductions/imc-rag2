@@ -21,9 +21,7 @@ qdrant-client
 # LLM HTTP client
 httpx
 
-# Document ingestion
-PyPDF2
-markdown
+
 
 # Testing
 pytest

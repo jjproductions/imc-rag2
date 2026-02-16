@@ -5,7 +5,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routes import ingest, query, stream
+from app.routes import query, stream
 
 # Configure logging
 logging.basicConfig(
@@ -14,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Local RAG API", version="1.0.0")
+app = FastAPI(title=settings.APP_NAME, version="1.0.0")
 
 # Enable CORS so frontends (like OpenWeb UI) can talk to this API.
 # Defaults to allowing all origins for quick testing; restrict in production.
@@ -57,7 +57,8 @@ def stats():
     })
 
 # Mount routes with auth dependency
-app.include_router(ingest.router, dependencies=[Depends(require_api_key)])
+# Mount routes with auth dependency
+# app.include_router(ingest.router, dependencies=[Depends(require_api_key)])
 app.include_router(query.router, dependencies=[Depends(require_api_key)])
 app.include_router(stream.router, dependencies=[Depends(require_api_key)])
 
