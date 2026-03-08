@@ -19,10 +19,15 @@ numpy
 qdrant-client
 
 # LLM HTTP client
+
 httpx
+
+google-generativeai
 
 
 
 # Testing
+
 pytest
+
 debugpy
