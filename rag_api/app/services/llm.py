@@ -2,8 +2,8 @@ import json, httpx, logging
 from typing import Protocol, Dict, Any, AsyncIterator, List
 from app.core.config import settings
 
-import google.generativeai as genai
-from google.generativeai.types import GenerationConfig
+from openai import AsyncAzureOpenAI
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -56,77 +56,75 @@ class OllamaClient:
             r.raise_for_status()
             return r.json()
 
-class GeminiClient:
-    def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
+class AzureOpenAIClient:
+    def __init__(self, api_key: str, endpoint: str, api_version: str):
+        self.client = AsyncAzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=endpoint,
+            api_version=api_version
+        )
 
     async def chat_stream(
         self, model: str, messages: List[Dict[str, Any]], temperature: float, max_tokens: int
     ) -> AsyncIterator[Dict[str, Any]]:
-        gemini_model = genai.GenerativeModel(model)
-        generation_config = GenerationConfig(temperature=temperature, max_output_tokens=max_tokens)
-        
-        # Gemini expects a list of alternating user/model roles.
-        # We assume the last message is the user prompt.
-        prompt = messages[-1]['content']
-        
-        stream = await gemini_model.generate_content_async(
-            prompt,
-            stream=True,
-            generation_config=generation_config
+        # Azure OpenAI stream implementation
+        stream = await self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True
         )
         
-        # Adapt Gemini stream to Ollama-like dictionary structure
         i = 0
         async for chunk in stream:
-            if chunk.parts:
+            if chunk.choices and chunk.choices[0].delta.content is not None:
                 yield {
                     "model": model,
-                    "created_at": chunk.created_at.isoformat(),
-                    "message": {"role": "assistant", "content": chunk.text},
+                    "created_at": time.time(),
+                    "message": {"role": "assistant", "content": chunk.choices[0].delta.content},
                     "done": False,
                     "index": i
                 }
                 i += 1
         
-        # Yield a final "done" message
         yield { "done": True, "message": {"role": "assistant", "content": ""} }
-
 
     async def chat_once(
         self, model: str, messages: List[Dict[str, Any]], temperature: float, max_tokens: int
     ) -> Dict[str, Any]:
-        gemini_model = genai.GenerativeModel(model)
-        generation_config = GenerationConfig(temperature=temperature, max_output_tokens=max_tokens)
-        
-        prompt = messages[-1]['content']
-        
-        response = await gemini_model.generate_content_async(
-            prompt,
-            generation_config=generation_config
+        response = await self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=False
         )
         
-        # Adapt Gemini response to Ollama-like dictionary structure
         return {
             "model": model,
-            "created_at": response.created_at.isoformat(),
-            "message": {"role": "assistant", "content": response.text},
+            "created_at": time.time(),
+            "message": {"role": "assistant", "content": response.choices[0].message.content},
             "done": True,
             "total_duration": 0,
             "load_duration": 0,
-            "prompt_eval_count": 0,
-            "prompt_eval_duration": 0,
-            "eval_count": 0,
+            "prompt_eval_count": response.usage.prompt_tokens if response.usage else 0,
+            "eval_count": response.usage.completion_tokens if response.usage else 0,
             "eval_duration": 0
         }
+
 
 
 def get_llm_client() -> LLMClient:
     if settings.LLM_PROVIDER == "ollama":
         return OllamaClient(settings.OLLAMA_BASE_URL)
-    elif settings.LLM_PROVIDER == "gemini":
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY must be set to use the Gemini provider.")
-        return GeminiClient(settings.GEMINI_API_KEY)
+    elif settings.LLM_PROVIDER == "azure_openai":
+        if not settings.AZURE_OPENAI_API_KEY or not settings.AZURE_OPENAI_ENDPOINT:
+            raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set.")
+        return AzureOpenAIClient(
+            api_key=settings.AZURE_OPENAI_API_KEY, 
+            endpoint=settings.AZURE_OPENAI_ENDPOINT, 
+            api_version=settings.AZURE_OPENAI_API_VERSION
+        )
     else:
         raise ValueError(f"Unknown LLM_PROVIDER: {settings.LLM_PROVIDER}")

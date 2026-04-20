@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Tuple
 import uuid
-from qdrant_client.models import Filter, FieldCondition, MatchValue, SearchParams
+from qdrant_client.models import Filter, FieldCondition, MatchValue, SearchParams, QuantizationSearchParams, SparseVector, Prefetch, FusionQuery, Fusion
 from app.core.config import settings
 from app.services.qdrant_client import get_qdrant, ensure_collection
 from app.services.embeddings import embed_texts, embed_query
@@ -24,6 +24,7 @@ def upsert_payloads(payloads: List[Dict[str, Any]], vectors):
     if not to_insert_indices:
         return 0
 
+    dense_vectors, sparse_vectors_list = vectors
     # Prepare
     points = []
     for i in to_insert_indices:
@@ -34,7 +35,13 @@ def upsert_payloads(payloads: List[Dict[str, Any]], vectors):
         points.append(
             {
                 "id": point_id,
-                "vector": vectors[i].tolist(),
+                "vector": {
+                    "dense": dense_vectors[i].tolist(),
+                    "sparse": SparseVector(
+                        indices=sparse_vectors_list[i].indices.tolist(),
+                        values=sparse_vectors_list[i].values.tolist()
+                    )
+                },
                 "payload": p
             }
         )
@@ -77,14 +84,36 @@ def _extract_payload_and_score(item: Any) -> Tuple[Dict[str, Any], float]:
 def search_similar(query: str, top_k: int) -> List[Dict[str, Any]]:
     client = get_qdrant()
     ensure_collection(client)
-    q_emb = embed_query(query)
+    q_dense, q_sparse = embed_query(query)
     
-    # Newer qdrant-client uses `query` positional arg for vectors.
+    # Advanced Hybrid Search with Prefetch and Reciprocal Rank Fusion
     results = client.query_points(
         collection_name=settings.QDRANT_COLLECTION,
-        query=q_emb.tolist(),
+        prefetch=[
+            Prefetch(
+                query=q_dense.tolist(),
+                using="dense",
+                limit=top_k * 2,
+                params=SearchParams(
+                    hnsw_ef=128,
+                    quantization=QuantizationSearchParams(
+                        ignore=False,
+                        rescore=True,
+                        oversampling=3.0
+                    )
+                ),
+            ),
+            Prefetch(
+                query=SparseVector(
+                    indices=q_sparse.indices.tolist(),
+                    values=q_sparse.values.tolist()
+                ),
+                using="sparse",
+                limit=top_k * 2,
+            )
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
         limit=top_k,
-        search_params=SearchParams(hnsw_ef=128),
         with_payload=True,
         with_vectors=False
     )

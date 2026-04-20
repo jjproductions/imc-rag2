@@ -14,15 +14,14 @@ orjson
 # Embeddings
 sentence-transformers
 numpy
+fastembed
 
 # Vector DB
 qdrant-client
 
 # LLM HTTP client
-
 httpx
-
-google-generativeai
+openai
 
 
 

@@ -20,7 +20,11 @@ def mock_settings():
 @pytest.fixture
 def mock_embed():
     with patch("rag_api.app.services.retriever.embed_query") as mock_embed:
-        mock_embed.return_value = MagicMock(tolist=lambda: [0.1, 0.2])
+        dense_mock = MagicMock(tolist=lambda: [0.1, 0.2])
+        sparse_mock = MagicMock()
+        sparse_mock.indices.tolist.return_value = [1, 2]
+        sparse_mock.values.tolist.return_value = [0.5, 0.6]
+        mock_embed.return_value = (dense_mock, sparse_mock)
         yield mock_embed
 
 def test_search_similar_handles_payload_objects(mock_qdrant, mock_settings, mock_embed):

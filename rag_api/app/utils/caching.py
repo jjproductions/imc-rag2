@@ -1,6 +1,7 @@
 import hashlib, re, unicodedata
 import json
 from typing import Any, Dict, List, Tuple, Optional
+import numpy as np
 
 
 def make_cache_key(
@@ -9,20 +10,19 @@ def make_cache_key(
     temperature: float,
     max_tokens: int,
     index_version: Optional[str] = None,  # bump this when your corpus changes
-) -> str:
+) -> dict:
     """
-    Create a stable key across the stream=True and stream=False calls for the same user turn.
+    Returns a dictionary payload rather than just a hash, 
+    so the semantic cache can extract the exact user prompt to embed.
     """
     payload = {
         "model": model,
-        "messages": messages,  # must be deterministic order and content
+        "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
         "index_version": index_version or "v1",
     }
-    s = json.dumps(payload, sort_keys=True, ensure_ascii=False)
-    # print(f"Message: {json.dumps(messages, indent=2)}")
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+    return payload
 
 
 def canonicalize_text(text: str) -> str:

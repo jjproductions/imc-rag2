@@ -7,27 +7,29 @@ class Settings(BaseSettings):
     APP_NAME: str = "Local IMC Chatbot"
 
     QDRANT_URL: str = "http://localhost:6333"
-    QDRANT_COLLECTION: str = "imc_corpus2"
+    QDRANT_COLLECTION: str = "imc_corpus_hybrid"
 
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
 
     # LLM general settings
-    LLM_PROVIDER: str = "ollama"  # "ollama" or "gemini"
+    LLM_PROVIDER: str = "azure_openai"  # "azure_openai" or "ollama"
     TEMPERATURE: float = 0.2
     MAX_TOKENS: int = 1024
 
-    # Ollama-specific
+    # Ollama-specific (Left for legacy fallback if ever needed)
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "deepseek-r1:14b"
 
-    # Gemini-specific
-    GEMINI_API_KEY: str | None = None
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    # Azure OpenAI-specific
+    AZURE_OPENAI_API_KEY: str | None = None
+    AZURE_OPENAI_ENDPOINT: str | None = None
+    AZURE_OPENAI_API_VERSION: str = "2024-02-01"
+    AZURE_OPENAI_DEPLOYMENT_NAME: str = "gpt-4o-mini"
 
     @property
     def ACTIVE_LLM_MODEL(self) -> str:
-        if self.LLM_PROVIDER == "gemini":
-            return self.GEMINI_MODEL
+        if self.LLM_PROVIDER == "azure_openai":
+            return self.AZURE_OPENAI_DEPLOYMENT_NAME
         return self.OLLAMA_MODEL
 
     VECTOR_SIZE: int = 1024
