@@ -1,0 +1,241 @@
+
+Command
+    az containerapp update : Update a container app. In multiple revisions mode, create a new
+    revision based on the latest revision.
+
+Arguments
+    --no-wait                                                                : Do not wait for the
+                                                                               long-running
+                                                                               operation to finish.
+    --tags                                                                   : Space-separated tags:
+                                                                               key[=value]
+                                                                               [key[=value] ...].
+                                                                               Use '' to clear
+                                                                               existing tags.
+    --yaml                                                                   : Path to a .yaml file
+                                                                               with the
+                                                                               configuration of a
+                                                                               container app. All
+                                                                               other parameters will
+                                                                               be ignored. For an
+                                                                               example, see  https:/
+                                                                               /learn.microsoft.com/
+                                                                               azure/container-
+                                                                               apps/azure-resource-
+                                                                               manager-api-
+                                                                               spec#examples.
+
+Container Arguments
+    --args                                                                   : A list of container
+                                                                               startup command
+                                                                               argument(s). Space-
+                                                                               separated values e.g.
+                                                                               "-c" "mycommand".
+                                                                               Empty string to clear
+                                                                               existing values.
+    --command                                                                : A list of supported
+                                                                               commands on the
+                                                                               container that will
+                                                                               executed during
+                                                                               startup. Space-
+                                                                               separated values e.g.
+                                                                               "/bin/queue"
+                                                                               "mycommand". Empty
+                                                                               string to clear
+                                                                               existing values.
+    --container-name                                                         : Name of the
+                                                                               container.
+    --cpu                                                                    : Required CPU in cores
+                                                                               from 0.25 - 2.0, e.g.
+                                                                               0.5.
+    --image -i                                                               : Container image, e.g.
+                                                                               publisher/image-
+                                                                               name:tag.
+    --memory                                                                 : Required memory from
+                                                                               0.5 - 4.0 ending with
+                                                                               "Gi", e.g. 1.0Gi.
+    --revision-suffix                                                        : User friendly suffix
+                                                                               that is appended to
+                                                                               the revision name.
+    --secret-volume-mount                                                    : Path to mount all
+                                                                               secrets e.g.
+                                                                               mnt/secrets.
+    --termination-grace-period --tgp                                         : Duration in seconds a
+                                                                               replica is given to
+                                                                               gracefully shut down
+                                                                               before it is
+                                                                               forcefully
+                                                                               terminated. (Default:
+                                                                               30).
+    --workload-profile-name -w                                               : The friendly name for
+                                                                               the workload profile.
+
+Environment variables Arguments
+    --remove-all-env-vars                                                    : Remove all
+                                                                               environment
+                                                                               variable(s) from
+                                                                               container..
+    --remove-env-vars                                                        : Remove environment
+                                                                               variable(s) from
+                                                                               container. Space-
+                                                                               separated environment
+                                                                               variable names.
+    --replace-env-vars                                                       : Replace environment
+                                                                               variable(s) in
+                                                                               container. Other
+                                                                               existing environment
+                                                                               variables are
+                                                                               removed. Space-
+                                                                               separated values in
+                                                                               'key=value' format.
+                                                                               If stored as a
+                                                                               secret, value must
+                                                                               start with
+                                                                               'secretref:' followed
+                                                                               by the secret name.
+    --set-env-vars                                                           : Add or update
+                                                                               environment
+                                                                               variable(s) in
+                                                                               container. Existing
+                                                                               environment variables
+                                                                               are not modified.
+                                                                               Space-separated
+                                                                               values in 'key=value'
+                                                                               format. If stored as
+                                                                               a secret, value must
+                                                                               start with
+                                                                               'secretref:' followed
+                                                                               by the secret name.
+
+Global Policy Arguments
+    --acquire-policy-token                                                   : Acquiring an Azure
+                                                                               Policy token
+                                                                               automatically for
+                                                                               this resource
+                                                                               operation.
+    --change-reference                                                       : The related change
+                                                                               reference ID for this
+                                                                               resource operation.
+
+Resource Id Arguments
+    --ids                                                                    : One or more resource
+                                                                               IDs (space-
+                                                                               delimited). It should
+                                                                               be a complete
+                                                                               resource ID
+                                                                               containing all
+                                                                               information of
+                                                                               'Resource Id'
+                                                                               arguments. You should
+                                                                               provide either --ids
+                                                                               or other 'Resource
+                                                                               Id' arguments.
+    --name -n                                                                : The name of the
+                                                                               Containerapp. A name
+                                                                               must consist of lower
+                                                                               case alphanumeric
+                                                                               characters or '-',
+                                                                               start with a letter,
+                                                                               end with an
+                                                                               alphanumeric
+                                                                               character, cannot
+                                                                               have '--', and must
+                                                                               be less than 32
+                                                                               characters.
+    --resource-group -g                                                      : Name of resource
+                                                                               group. You can
+                                                                               configure the default
+                                                                               group using `az
+                                                                               configure --defaults
+                                                                               group=<name>`.
+    --subscription                                                           : Name or ID of
+                                                                               subscription. You can
+                                                                               configure the default
+                                                                               subscription using
+                                                                               `az account set -s
+                                                                               NAME_OR_ID`.
+
+Scale Arguments
+    --max-replicas                                                           : The maximum number of
+                                                                               replicas.
+    --min-replicas                                                           : The minimum number of
+                                                                               replicas.
+    --scale-rule-auth --sra                                                  : Scale rule auth
+                                                                               parameters. Auth
+                                                                               parameters must be in
+                                                                               format "{triggerParam
+                                                                               eter}={secretRef} {tr
+                                                                               iggerParameter}={secr
+                                                                               etRef} ...".
+    --scale-rule-http-concurrency --scale-rule-tcp-concurrency --srhc --srtc : The maximum number of
+                                                                               concurrent requests
+                                                                               before scale out.
+                                                                               Only supported for
+                                                                               http and tcp scale
+                                                                               rules.
+    --scale-rule-metadata --srm                                              : Scale rule metadata.
+                                                                               Metadata must be in
+                                                                               format "{key}={value}
+                                                                               {key}={value} ...".
+    --scale-rule-name --srn                                                  : The name of the scale
+                                                                               rule.
+    --scale-rule-type --srt                                                  : The type of the scale
+                                                                               rule. Default: http.
+                                                                               For more information
+                                                                               please visit https://
+                                                                               learn.microsoft.com/a
+                                                                               zure/container-
+                                                                               apps/scale-app#scale-
+                                                                               triggers.
+
+Global Arguments
+    --debug                                                                  : Increase logging
+                                                                               verbosity to show all
+                                                                               debug logs.
+    --help -h                                                                : Show this help
+                                                                               message and exit.
+    --only-show-errors                                                       : Only show errors,
+                                                                               suppressing warnings.
+    --output -o                                                              : Output format.
+                                                                               Allowed values: json,
+                                                                               jsonc, none, table,
+                                                                               tsv, yaml, yamlc.
+                                                                               Default: json.
+    --query                                                                  : JMESPath query
+                                                                               string. See
+                                                                               http://jmespath.org/
+                                                                               for more information
+                                                                               and examples.
+    --verbose                                                                : Increase logging
+                                                                               verbosity. Use
+                                                                               --debug for full
+                                                                               debug logs.
+
+Examples
+    Update a container app's container image.
+        az containerapp update -n my-containerapp -g MyResourceGroup \
+            --image myregistry.azurecr.io/my-app:v2.0
+
+
+    Update a container app's resource requirements and scale limits.
+        az containerapp update -n my-containerapp -g MyResourceGroup \
+            --cpu 0.5 --memory 1.0Gi \
+            --min-replicas 4 --max-replicas 8
+
+
+    Update a container app with an http scale rule
+        az containerapp update -n myapp -g mygroup \
+            --scale-rule-name my-http-rule \
+            --scale-rule-http-concurrency 50
+
+
+    Update a container app with a custom scale rule
+        az containerapp update -n myapp -g mygroup \
+            --scale-rule-name my-custom-rule \
+            --scale-rule-type my-custom-type \
+            --scale-rule-metadata key=value key2=value2 \
+            --scale-rule-auth triggerparam=secretref triggerparam=secretref
+
+
+To search AI knowledge base for examples, use: az find "az containerapp update"
+

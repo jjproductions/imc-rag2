@@ -1,0 +1,19 @@
+properties:
+  configuration:
+    ingress:
+      external: false
+      targetPort: 6333
+  template:
+    containers:
+      - image: qdrant/qdrant:latest
+        name: qdrant-app
+        resources:
+          cpu: 0.5
+          memory: 1.0Gi
+        volumeMounts:
+          - volumeName: storage
+            mountPath: /qdrant/storage
+    volumes:
+      - name: storage
+        storageType: AzureFile
+        storageName: qdrant-storage

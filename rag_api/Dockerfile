@@ -1,11 +1,18 @@
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1             PYTHONUNBUFFERED=1             TRANSFORMERS_OFFLINE=${TRANSFORMERS_OFFLINE:-0}             HF_HOME=${HF_HOME:-/models}             PIP_NO_CACHE_DIR=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    TRANSFORMERS_OFFLINE=0 \
+    HF_HOME=/models \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
 # System deps
-RUN apt-get update && apt-get install -y --no-install-recommends             curl             && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Python deps (minimal & offline-friendly)
 COPY requirements.txt .

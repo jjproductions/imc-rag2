@@ -6,7 +6,7 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def get_qdrant() -> QdrantClient:
-    return QdrantClient(url=settings.QDRANT_URL)
+    return QdrantClient(url=settings.QDRANT_URL, port=settings.QDRANT_PORT)
 
 def ensure_collection(client: QdrantClient):
     collections = [c.name for c in client.get_collections().collections]

@@ -6,7 +6,8 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "Local IMC Chatbot"
 
-    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_URL: str = "http://localhost"
+    QDRANT_PORT: int = 6333
     QDRANT_COLLECTION: str = "imc_corpus_hybrid"
 
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
