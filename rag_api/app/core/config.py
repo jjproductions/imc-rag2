@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     QDRANT_URL: str = "http://localhost"
     QDRANT_PORT: int = 6333
     QDRANT_COLLECTION: str = "imc_corpus_hybrid"
+    QDRANT_TIMEOUT: float = 30.0
 
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
 
