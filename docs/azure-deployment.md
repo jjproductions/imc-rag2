@@ -15,7 +15,7 @@ LOCATION="eastus"
 ACR_NAME="imcregistry"
 ENV_NAME="imc-rag-env"
 AZURE_OPENAI_API_KEY="<Add Azure OpenAI API Key>"
-AZURE_OPENAI_ENDPOINT="https://imc-rag-foundry-resource.openai.azure.com/openai/v1"
+AZURE_OPENAI_ENDPOINT="https://imc-rag-foundry-resource.openai.azure.com"
 
 
 # Create Resource Group
@@ -104,7 +104,7 @@ az containerapp create \
              LLM_PROVIDER="azure_openai" \
              AZURE_OPENAI_API_KEY="$AZURE_OPENAI_API_KEY" \
              AZURE_OPENAI_ENDPOINT="$AZURE_OPENAI_ENDPOINT" \
-             AZURE_OPENAI_API_VERSION="2024-02-01" \
+             AZURE_OPENAI_API_VERSION="2024-07-18" \
              AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o-mini" \
              EMBEDDING_MODEL="BAAI/bge-m3"
 ```

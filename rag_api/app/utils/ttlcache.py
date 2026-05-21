@@ -47,22 +47,31 @@ class SemanticTTLCache:
                 
             return None
 
-    async def get(self, key: str) -> Optional[Any]:
+    def _normalize_key(self, key: Any) -> str:
+        if isinstance(key, str):
+            return key
+        if isinstance(key, dict):
+            return json.dumps(key, sort_keys=True)
+        return str(key)
+
+    async def get(self, key: Any) -> Optional[Any]:
+        normalized_key = self._normalize_key(key)
         async with self.lock:
             self._purge_expired()
-            if key in self.store:
-                ts, v_emb, c_str, val = self.store.pop(key)
-                self.store[key] = (ts, v_emb, c_str, val)
+            if normalized_key in self.store:
+                ts, v_emb, c_str, val = self.store.pop(normalized_key)
+                self.store[normalized_key] = (ts, v_emb, c_str, val)
                 return val
             return None
 
-    async def set(self, key: str, value: Any, emb: Any = None, context_str: str = ""):
+    async def set(self, key: Any, value: Any, emb: Any = None, context_str: str = ""):
+        normalized_key = self._normalize_key(key)
         async with self.lock:
             self._purge_expired()
-            if key in self.store:
-                self.store.pop(key, None)
+            if normalized_key in self.store:
+                self.store.pop(normalized_key, None)
             
-            self.store[key] = (time.time(), emb, context_str, value)
+            self.store[normalized_key] = (time.time(), emb, context_str, value)
             
             while len(self.store) > self.maxsize:
                 self.store.popitem(last=False)
