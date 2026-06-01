@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     TRANSFORMERS_OFFLINE: int = int(os.getenv("TRANSFORMERS_OFFLINE", "0"))
     HF_HOME: str = os.getenv("HF_HOME", "/models")
+    FASTEMBED_CACHE_PATH: str = os.getenv("FASTEMBED_CACHE_PATH", "/models/fastembed")
     
     DOC_BASE_URL: str | None = None
 

@@ -17,8 +17,8 @@ def _load_models():
         logger.info(f"Loading dense embedding model: {settings.EMBEDDING_MODEL}")
         dense = SentenceTransformer(settings.EMBEDDING_MODEL, trust_remote_code=True)
         
-        logger.info("Loading sparse embedding model: prithivida/Splade_PP_en_v1")
-        sparse = SparseTextEmbedding(model_name="prithivida/Splade_PP_en_v1")
+        logger.info(f"Loading sparse embedding model: prithivida/Splade_PP_en_v1 (cache_dir={settings.FASTEMBED_CACHE_PATH})")
+        sparse = SparseTextEmbedding(model_name="prithivida/Splade_PP_en_v1", cache_dir=settings.FASTEMBED_CACHE_PATH)
         
         return dense, sparse
     except Exception as e:

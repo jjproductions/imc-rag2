@@ -229,7 +229,7 @@ async def websocket_chat_completions(websocket: WebSocket):
         )
         chunks = await retrieval_cache.get(retrieval_key)
         if chunks is None:
-            chunks = search_similar(last_user, top_k=top_k)
+            chunks = search_similar(parsed_message, top_k=top_k)
             await retrieval_cache.set(retrieval_key, chunks)
 
         messages = build_messages(last_user, chunks)
@@ -355,7 +355,7 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
     )
     chunks = await retrieval_cache.get(retrieval_key)
     if chunks is None:
-        chunks = search_similar(last_user, top_k=top_k)
+        chunks = search_similar(parsed_message, top_k=top_k)
         await retrieval_cache.set(retrieval_key, chunks)
 
     messages = build_messages(last_user, chunks)

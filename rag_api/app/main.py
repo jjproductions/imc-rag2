@@ -30,6 +30,7 @@ security = HTTPBearer()
 
 def require_api_key(credentials: HTTPAuthorizationCredentials = Depends(security)):
     if credentials.credentials != settings.API_KEY:
+        logger.warning(f"Unauthorized access attempt: provided token '{credentials.credentials[:4]}...' does not match settings.API_KEY")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing API key",
