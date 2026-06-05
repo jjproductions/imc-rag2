@@ -15,19 +15,6 @@ services:
       timeout: 3s
       retries: 30
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_models:/root/.ollama `
-    healthcheck:
-      test: [ "CMD", "curl", "-fsS", "http://localhost:11434/api/tags" ]
-      interval: 5s
-      timeout: 3s
-      retries: 60
 
   rag-api:
     build:
@@ -68,7 +55,6 @@ services:
 
 volumes:
   qdrant_data:
-  ollama_models:
 
 
 networks:

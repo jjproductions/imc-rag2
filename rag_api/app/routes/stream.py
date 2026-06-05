@@ -8,7 +8,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.models.schemas import StreamRequest, OpenAIChatCompletionRequest
 from app.services.retriever import search_similar
 from app.services.prompt import build_messages
-from app.services.llm import get_ollama
+from app.services.llm import get_llm_client
 from app.core.config import settings
 from app.utils.caching import (
     extract_final_user_message,
@@ -28,17 +28,18 @@ async def stream(req: StreamRequest):
     trace_id = req.trace_id or str(uuid.uuid4())
     chunks = search_similar(req.question, top_k=top_k)
     messages = build_messages(req.question, chunks)
-    client = get_ollama()
+    
+    client = get_llm_client()
 
     start = time.time()
     total_ms = 0
 
     async def event_generator() -> AsyncGenerator[Dict[str, Any], None]:
-        # Stream from Ollama and forward as SSE
+        # Stream from LLM and forward as SSE
         # Each 'data' is JSON: {"delta":"..."}; final contains usage
         async with asyncio.Semaphore(1):
-            for ev in client.chat_stream(
-                model=settings.OLLAMA_MODEL,
+            async for ev in client.chat_stream(
+                model=settings.ACTIVE_LLM_MODEL,
                 messages=messages,
                 temperature=settings.TEMPERATURE,
                 max_tokens=settings.MAX_TOKENS,
@@ -171,7 +172,7 @@ def format_sources_block(doc_ids, all_sources):
         else:
             lines.append(f"[{i}] {title}{page_str}")
         
-    return "\n\nSources:\n" + "\n".join(lines)
+    return "\n\n---\n> **Sources:**\n" + "\n".join([f"> {line}" for line in lines])
 
 
 @openai_ws_router.websocket("/chat/completions")
@@ -228,13 +229,13 @@ async def websocket_chat_completions(websocket: WebSocket):
         )
         chunks = await retrieval_cache.get(retrieval_key)
         if chunks is None:
-            chunks = search_similar(last_user, top_k=top_k)
+            chunks = search_similar(parsed_message, top_k=top_k)
             await retrieval_cache.set(retrieval_key, chunks)
 
         messages = build_messages(last_user, chunks)
         
-        client = get_ollama()
-        model = req.model or settings.OLLAMA_MODEL
+        client = get_llm_client()
+        model = req.model or settings.ACTIVE_LLM_MODEL
         temperature = req.temperature or settings.TEMPERATURE
         max_tokens = req.max_tokens or settings.MAX_TOKENS
         
@@ -354,13 +355,13 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
     )
     chunks = await retrieval_cache.get(retrieval_key)
     if chunks is None:
-        chunks = search_similar(last_user, top_k=top_k)
+        chunks = search_similar(parsed_message, top_k=top_k)
         await retrieval_cache.set(retrieval_key, chunks)
 
     messages = build_messages(last_user, chunks)
 
-    client = get_ollama()
-    model = req.model or settings.OLLAMA_MODEL
+    client = get_llm_client()
+    model = req.model or settings.ACTIVE_LLM_MODEL
     temperature = req.temperature or settings.TEMPERATURE
     max_tokens = req.max_tokens or settings.MAX_TOKENS
     index_version = getattr(settings, "INDEX_VERSION", "v1")  # bump when corpus changes
@@ -564,12 +565,11 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
 @openai_router.get("/models")
 async def openai_models():
     """Return a minimal OpenAI-compatible model list so frontends can enumerate models."""
-    model_id = settings.OLLAMA_MODEL
     return {
         "object": "list",
         "data": [
             {
-                "id": model_id,
+                "id": settings.ACTIVE_LLM_MODEL,
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "local",

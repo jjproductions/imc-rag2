@@ -1,0 +1,22 @@
+location: eastus
+name: qdrant-app
+properties:
+  environmentId: /subscriptions/ba6dcc7e-b6bc-44ca-aa09-342f604118d7/resourceGroups/imc-rag-rg/providers/Microsoft.App/managedEnvironments/imc-rag-env
+  configuration:
+    ingress:
+      external: false
+      targetPort: 6333
+  template:
+    containers:
+      - image: qdrant/qdrant:latest
+        name: qdrant-app
+        resources:
+          cpu: 0.5
+          memory: 1.0Gi
+        volumeMounts:
+          - volumeName: storage
+            mountPath: /qdrant/storage
+    volumes:
+      - name: storage
+        storageType: AzureFile
+        storageName: qdrant-storage

@@ -1,0 +1,81 @@
+name: Deploy RAG API to Azure
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Permissions required for OIDC login (Azure authentication) and checking out code
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  # Deployment Configs (matches docs/azure-deployment.md - adjust if needed)
+  RESOURCE_GROUP: "imc-rag-rg"
+  ACR_NAME: "imcregistry"
+  ENV_NAME: "imc-rag-env"
+  CONTAINER_APP_NAME: "rag-api-app"
+  IMAGE_NAME: "imc-rag-api"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Retrieve ACR Credentials
+        id: acr-creds
+        run: |
+          echo "Fetching credentials for ACR: ${{ env.ACR_NAME }}..."
+          USERNAME=$(az acr credential show --name ${{ env.ACR_NAME }} --query username -o tsv)
+          PASSWORD=$(az acr credential show --name ${{ env.ACR_NAME }} --query "passwords[0].value" -o tsv)
+          echo "username=$USERNAME" >> $GITHUB_OUTPUT
+          echo "::add-mask::$PASSWORD"
+          echo "password=$PASSWORD" >> $GITHUB_OUTPUT
+
+      - name: Log in to Azure Container Registry (ACR)
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ env.ACR_NAME }}.azurecr.io
+          username: ${{ steps.acr-creds.outputs.username }}
+          password: ${{ steps.acr-creds.outputs.password }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: rag_api/Dockerfile
+          push: true
+          # Tag with both git SHA (for immutability) and latest
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          platforms: linux/amd64
+          # Advanced GitHub Actions Caching for Docker layers
+          # This caches the baked-in SentenceTransformers and FastEmbed models,
+          # reducing subsequent build times from 5-8 minutes to under 30 seconds!
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Azure Container Apps
+        run: |
+          ./scripts/deploy.sh deploy
+        env:
+          RESOURCE_GROUP: ${{ env.RESOURCE_GROUP }}
+          ACR_NAME: ${{ env.ACR_NAME }}
+          ENV_NAME: ${{ env.ENV_NAME }}
+          CONTAINER_APP_NAME: ${{ env.CONTAINER_APP_NAME }}
+          IMAGE_TAG: ${{ github.sha }}

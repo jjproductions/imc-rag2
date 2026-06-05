@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from app.models.schemas import QueryRequest, AnswerResponse, RetrievedChunk
 from app.services.retriever import search_similar
 from app.services.prompt import build_messages
-from app.services.llm import get_ollama
+from app.services.llm import get_llm_client
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -12,14 +12,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["query"])
 
 @router.post("/query", response_model=AnswerResponse)
-def query(req: QueryRequest):
+async def query(req: QueryRequest) -> AnswerResponse:
     t0 = time.time()
     top_k = req.top_k or settings.TOP_K
     chunks = search_similar(req.question, top_k=top_k)
     messages = build_messages(req.question, chunks)
-    client = get_ollama()
-    resp = client.chat_once(
-        model=settings.OLLAMA_MODEL,
+    
+    client = get_llm_client()
+
+    resp = await client.chat_once(
+        model=settings.ACTIVE_LLM_MODEL,
         messages=messages,
         temperature=settings.TEMPERATURE,
         max_tokens=settings.MAX_TOKENS
