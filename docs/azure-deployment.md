@@ -174,6 +174,7 @@ Locally in your terminal, run the following command (substituting your resource 
 
 ```bash
 # 1. Create the AD Application
+az login
 APP_JSON=$(az ad app create --display-name "imc-rag-github-actions" -o json)
 APP_ID=$(echo $APP_JSON | python3 -c "import sys, json; print(json.load(sys.stdin)['appId'])")
 OBJECT_ID=$(echo $APP_JSON | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
@@ -193,7 +194,11 @@ SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 SCOPE="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/imc-rag-rg"
 
 # Assign "Contributor" role to let GitHub update Container Apps
-az role assignment create --role "Contributor" --assignee $APP_ID --scope $SCOPE
+az ad sp create-for-rbac \
+  --name "GitHubActions-imc-rag2" \
+  --role contributor \
+  --scopes /subscriptions/ba6dcc7e-b6bc-44ca-aa09-342f604118d7 \
+  --sdk-auth
 ```
 
 #### 3. Establish Federated Credentials (OIDC Connection)
@@ -205,7 +210,7 @@ Create a file named `credential.json` (replace `<your-github-username>` with you
 {
   "name": "imc-rag-github-actions-main",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:<your-github-username>/imc-rag2:ref:refs/heads/main",
+  "subject": "repo:jjproductions/imc-rag2:ref:refs/heads/main",
   "description": "Federated credentials allowing GitHub Actions to deploy to Azure",
   "audiences": [
     "api://AzureADTokenExchange"
