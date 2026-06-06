@@ -1,6 +1,8 @@
 import time
 import logging
 import asyncio
+import os
+import json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -10,11 +12,43 @@ from app.core.config import settings
 from app.routes import query, stream
 from app.services.embeddings import get_models
 
-# Configure logging
-logging.basicConfig(
-    level=settings.LOG_LEVEL,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+class JSONFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry)
+
+# Use JSON logging if running inside production docker or if LOG_FORMAT=json is requested
+is_prod = (os.getenv("TRANSFORMERS_OFFLINE", "0") == "1")
+if is_prod or os.getenv("LOG_FORMAT", "").lower() == "json":
+    root_logger = logging.getLogger()
+    root_logger.setLevel(settings.LOG_LEVEL)
+    
+    # Remove existing handlers to avoid duplicates
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+        
+    handler = logging.StreamHandler()
+    handler.setFormatter(JSONFormatter())
+    root_logger.addHandler(handler)
+    
+    # Propagate other library logs to our root JSON handler
+    for log_name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"]:
+        l = logging.getLogger(log_name)
+        l.handlers = []
+        l.propagate = True
+else:
+    logging.basicConfig(
+        level=settings.LOG_LEVEL,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
@@ -54,7 +88,18 @@ def require_api_key(credentials: HTTPAuthorizationCredentials = Depends(security
 
 @app.get("/health", response_class=PlainTextResponse)
 def health():
-    return "ok"
+    try:
+        from app.services.qdrant_client import get_qdrant
+        client = get_qdrant()
+        # Ping Qdrant database to check connection
+        client.get_collections()
+        return "ok"
+    except Exception as e:
+        logger.error(f"Health check failed (Qdrant unreachable): {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Database connection error: {e}"
+        )
 
 # @app.get("/stats", dependencies=[Depends(require_api_key)])
 @app.get("/stats")

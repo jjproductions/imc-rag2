@@ -58,3 +58,13 @@ Next steps
 - I can add a concrete example implementation in `rag_api/app/services/llm.py` showing how to call Gemini — tell me if you'd like a sample.
 
 If you'd like, I can also add specific example commands showing how to call the Gemini REST or Python SDK from `rag_api/app/services`.
+
+## Custom Agent Instructions
+
+### git-bump
+If the user starts or ends their message with the keyword combination `[git-bump]` (or `[git-bump-push]`):
+The agent must:
+1. Scan the git history (`git log -n 5`) to find the latest version prefix in the format `Beta 1.0.X` (or similar).
+2. Increment the patch version sequentially (e.g. from `Beta 1.0.10` to `Beta 1.0.11`).
+3. Generate a concise commit message detailing the currently staged changes.
+4. Execute `git commit` and `git push` to the active branch automatically.
