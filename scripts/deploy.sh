@@ -26,6 +26,10 @@ ENV_NAME="${ENV_NAME:-imc-rag-env}"
 CONTAINER_APP_NAME="${CONTAINER_APP_NAME:-rag-api-app}"
 IMAGE_NAME="${IMAGE_NAME:-imc-rag-api}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+CPU="${CPU:-0.5}"
+MEMORY="${MEMORY:-1.0Gi}"
+MIN_REPLICAS="${MIN_REPLICAS:-0}"
+MAX_REPLICAS="${MAX_REPLICAS:-3}"
 
 ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"
 FULL_IMAGE_NAME="${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}"
@@ -114,6 +118,22 @@ deploy_container_app() {
   check_cli_dependencies false
   check_azure_auth
   
+  # Establish default/fallback variables for creation and updates
+  local api_key="${API_KEY:-sk-rag-demo}"
+  local qdrant_url="${QDRANT_URL:-http://qdrant-app}"
+  local qdrant_port="${QDRANT_PORT:-80}"
+  local qdrant_collection="${QDRANT_COLLECTION:-board-policies-hybrid}"
+  local llm_provider="${LLM_PROVIDER:-azure_openai}"
+  local aoai_key="${AZURE_OPENAI_API_KEY:-}"
+  local aoai_endpoint="${AZURE_OPENAI_ENDPOINT:-}"
+  local aoai_version="${AZURE_OPENAI_API_VERSION:-2024-07-18}"
+  local aoai_deployment="${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4o-mini}"
+  local embedding_model="${EMBEDDING_MODEL:-BAAI/bge-m3}"
+  local transformers_offline="${TRANSFORMERS_OFFLINE:-1}"
+  local hf_hub_offline="${HF_HUB_OFFLINE:-1}"
+  local torch_num_threads="${TORCH_NUM_THREADS:-1}"
+  local hf_home="${HF_HOME:-/models}"
+  
   log "Verifying Resource Group '$RESOURCE_GROUP' exists..."
   if ! az group show --name "$RESOURCE_GROUP" &>/dev/null; then
     error_exit "Resource Group '$RESOURCE_GROUP' does not exist. Please create shared infrastructure first."
@@ -126,13 +146,46 @@ deploy_container_app() {
 
   log "Checking if Container App '$CONTAINER_APP_NAME' exists..."
   if az containerapp show --name "$CONTAINER_APP_NAME" --resource-group "$RESOURCE_GROUP" &>/dev/null; then
-    # App exists, perform an in-place update of the image
-    log "Container App '$CONTAINER_APP_NAME' exists. Triggering image-only update (rolling revision deployment)..."
+    # App exists, perform an in-place update of the image and configuration
+    log "Container App '$CONTAINER_APP_NAME' exists. Triggering image and config update (rolling revision deployment)..."
     
     az containerapp update \
       --name "$CONTAINER_APP_NAME" \
       --resource-group "$RESOURCE_GROUP" \
-      --image "$FULL_IMAGE_NAME"
+      --image "$FULL_IMAGE_NAME" \
+      --cpu "$CPU" \
+      --memory "$MEMORY" \
+      --min-replicas "$MIN_REPLICAS" \
+      --max-replicas "$MAX_REPLICAS" \
+      --startup-probe-path "/health" \
+      --startup-probe-port 8000 \
+      --startup-probe-transport "HTTP" \
+      --startup-probe-initial-delay-seconds 5 \
+      --startup-probe-period-seconds 10 \
+      --startup-probe-failure-threshold 15 \
+      --readiness-probe-path "/health" \
+      --readiness-probe-port 8000 \
+      --readiness-probe-transport "HTTP" \
+      --readiness-probe-period-seconds 10 \
+      --liveness-probe-path "/health" \
+      --liveness-probe-port 8000 \
+      --liveness-probe-transport "HTTP" \
+      --liveness-probe-period-seconds 20 \
+      --liveness-probe-failure-threshold 3 \
+      --set-env-vars QDRANT_URL="$qdrant_url" \
+                     QDRANT_PORT="$qdrant_port" \
+                     QDRANT_COLLECTION="$qdrant_collection" \
+                     API_KEY="$api_key" \
+                     LLM_PROVIDER="$llm_provider" \
+                     AZURE_OPENAI_API_KEY="$aoai_key" \
+                     AZURE_OPENAI_ENDPOINT="$aoai_endpoint" \
+                     AZURE_OPENAI_API_VERSION="$aoai_version" \
+                     AZURE_OPENAI_DEPLOYMENT_NAME="$aoai_deployment" \
+                     EMBEDDING_MODEL="$embedding_model" \
+                     TRANSFORMERS_OFFLINE="$transformers_offline" \
+                     HF_HUB_OFFLINE="$hf_hub_offline" \
+                     TORCH_NUM_THREADS="$torch_num_threads" \
+                     HF_HOME="$hf_home"
       
     log "Rolling deployment triggered successfully!"
   else
@@ -144,18 +197,6 @@ deploy_container_app() {
     local acr_password
     acr_password=$(az acr credential show --name "$ACR_NAME" --query "passwords[0].value" -o tsv)
     
-    # Establish default/fallback variables for initial creation if they aren't configured
-    local api_key="${API_KEY:-sk-rag-demo}"
-    local qdrant_url="${QDRANT_URL:-http://qdrant-app}"
-    local qdrant_port="${QDRANT_PORT:-80}"
-    local qdrant_collection="${QDRANT_COLLECTION:-board-policies-hybrid}"
-    local llm_provider="${LLM_PROVIDER:-azure_openai}"
-    local aoai_key="${AZURE_OPENAI_API_KEY:-}"
-    local aoai_endpoint="${AZURE_OPENAI_ENDPOINT:-}"
-    local aoai_version="${AZURE_OPENAI_API_VERSION:-2024-07-18}"
-    local aoai_deployment="${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4o-mini}"
-    local embedding_model="${EMBEDDING_MODEL:-BAAI/bge-m3}"
-    
     az containerapp create \
       --name "$CONTAINER_APP_NAME" \
       --resource-group "$RESOURCE_GROUP" \
@@ -164,11 +205,26 @@ deploy_container_app() {
       --registry-server "$ACR_LOGIN_SERVER" \
       --registry-username "$ACR_NAME" \
       --registry-password "$acr_password" \
-      --cpu 0.5 --memory 1.0Gi \
-      --min-replicas 0 \
-      --max-replicas 3 \
+      --cpu "$CPU" --memory "$MEMORY" \
+      --min-replicas "$MIN_REPLICAS" \
+      --max-replicas "$MAX_REPLICAS" \
       --ingress external \
       --target-port 8000 \
+      --startup-probe-path "/health" \
+      --startup-probe-port 8000 \
+      --startup-probe-transport "HTTP" \
+      --startup-probe-initial-delay-seconds 5 \
+      --startup-probe-period-seconds 10 \
+      --startup-probe-failure-threshold 15 \
+      --readiness-probe-path "/health" \
+      --readiness-probe-port 8000 \
+      --readiness-probe-transport "HTTP" \
+      --readiness-probe-period-seconds 10 \
+      --liveness-probe-path "/health" \
+      --liveness-probe-port 8000 \
+      --liveness-probe-transport "HTTP" \
+      --liveness-probe-period-seconds 20 \
+      --liveness-probe-failure-threshold 3 \
       --env-vars QDRANT_URL="$qdrant_url" \
                  QDRANT_PORT="$qdrant_port" \
                  QDRANT_COLLECTION="$qdrant_collection" \
@@ -178,8 +234,12 @@ deploy_container_app() {
                  AZURE_OPENAI_ENDPOINT="$aoai_endpoint" \
                  AZURE_OPENAI_API_VERSION="$aoai_version" \
                  AZURE_OPENAI_DEPLOYMENT_NAME="$aoai_deployment" \
-                 EMBEDDING_MODEL="$embedding_model"
-                 
+                 EMBEDDING_MODEL="$embedding_model" \
+                 TRANSFORMERS_OFFLINE="$transformers_offline" \
+                 HF_HUB_OFFLINE="$hf_hub_offline" \
+                 TORCH_NUM_THREADS="$torch_num_threads" \
+                 HF_HOME="$hf_home"
+                  
     log "Container App '$CONTAINER_APP_NAME' created and deployed successfully!"
   fi
 }

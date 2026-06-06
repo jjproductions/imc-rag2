@@ -1,4 +1,4 @@
-import json, httpx, logging
+import json, httpx, logging, threading
 from typing import Protocol, Dict, Any, AsyncIterator, List
 from app.core.config import settings
 
@@ -21,6 +21,7 @@ class LLMClient(Protocol):
 class OllamaClient:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
+        self._client = httpx.AsyncClient(timeout=None)
 
     async def chat_stream(
         self, model: str, messages: List[Dict[str, Any]], temperature: float, max_tokens: int
@@ -31,16 +32,15 @@ class OllamaClient:
             "options": {"temperature": temperature, "num_predict": max_tokens},
             "stream": True,
         }
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("POST", url, json=payload) as r:
-                r.raise_for_status()
-                async for line in r.aiter_lines():
-                    if not line: continue
-                    try:
-                        yield json.loads(line)
-                    except Exception:
-                        logger.warning(f"Failed to parse Ollama stream line: {line}")
-                        continue
+        async with self._client.stream("POST", url, json=payload) as r:
+            r.raise_for_status()
+            async for line in r.aiter_lines():
+                if not line: continue
+                try:
+                    yield json.loads(line)
+                except Exception:
+                    logger.warning(f"Failed to parse Ollama stream line: {line}")
+                    continue
 
     async def chat_once(
         self, model: str, messages: List[Dict[str, Any]], temperature: float, max_tokens: int
@@ -51,10 +51,9 @@ class OllamaClient:
             "options": {"temperature": temperature, "num_predict": max_tokens},
             "stream": False,
         }
-        async with httpx.AsyncClient(timeout=None) as client:
-            r = await client.post(url, json=payload)
-            r.raise_for_status()
-            return r.json()
+        r = await self._client.post(url, json=payload)
+        r.raise_for_status()
+        return r.json()
 
 class AzureOpenAIClient:
     def __init__(self, api_key: str, endpoint: str, api_version: str):
@@ -115,16 +114,24 @@ class AzureOpenAIClient:
 
 
 
+_llm_client = None
+_client_lock = threading.Lock()
+
 def get_llm_client() -> LLMClient:
-    if settings.LLM_PROVIDER == "ollama":
-        return OllamaClient(settings.OLLAMA_BASE_URL)
-    elif settings.LLM_PROVIDER == "azure_openai":
-        if not settings.AZURE_OPENAI_API_KEY or not settings.AZURE_OPENAI_ENDPOINT:
-            raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set.")
-        return AzureOpenAIClient(
-            api_key=settings.AZURE_OPENAI_API_KEY, 
-            endpoint=settings.AZURE_OPENAI_ENDPOINT, 
-            api_version=settings.AZURE_OPENAI_API_VERSION
-        )
-    else:
-        raise ValueError(f"Unknown LLM_PROVIDER: {settings.LLM_PROVIDER}")
+    global _llm_client
+    if _llm_client is None:
+        with _client_lock:
+            if _llm_client is None:
+                if settings.LLM_PROVIDER == "ollama":
+                    _llm_client = OllamaClient(settings.OLLAMA_BASE_URL)
+                elif settings.LLM_PROVIDER == "azure_openai":
+                    if not settings.AZURE_OPENAI_API_KEY or not settings.AZURE_OPENAI_ENDPOINT:
+                        raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set.")
+                    _llm_client = AzureOpenAIClient(
+                        api_key=settings.AZURE_OPENAI_API_KEY, 
+                        endpoint=settings.AZURE_OPENAI_ENDPOINT, 
+                        api_version=settings.AZURE_OPENAI_API_VERSION
+                    )
+                else:
+                    raise ValueError(f"Unknown LLM_PROVIDER: {settings.LLM_PROVIDER}")
+    return _llm_client
