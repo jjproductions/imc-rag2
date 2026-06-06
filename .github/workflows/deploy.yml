@@ -26,9 +26,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to Azure (OIDC)
         uses: azure/login@v2
         with:
@@ -50,6 +47,9 @@ jobs:
           login-server: ${{ env.ACR_NAME }}.azurecr.io
           username: ${{ steps.acr-creds.outputs.username }}
           password: ${{ steps.acr-creds.outputs.password }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
