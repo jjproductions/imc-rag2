@@ -157,21 +157,6 @@ deploy_container_app() {
       --memory "$MEMORY" \
       --min-replicas "$MIN_REPLICAS" \
       --max-replicas "$MAX_REPLICAS" \
-      --startup-probe-path "/health" \
-      --startup-probe-port 8000 \
-      --startup-probe-transport "HTTP" \
-      --startup-probe-initial-delay-seconds 5 \
-      --startup-probe-period-seconds 10 \
-      --startup-probe-failure-threshold 15 \
-      --readiness-probe-path "/health" \
-      --readiness-probe-port 8000 \
-      --readiness-probe-transport "HTTP" \
-      --readiness-probe-period-seconds 10 \
-      --liveness-probe-path "/health" \
-      --liveness-probe-port 8000 \
-      --liveness-probe-transport "HTTP" \
-      --liveness-probe-period-seconds 20 \
-      --liveness-probe-failure-threshold 3 \
       --set-env-vars QDRANT_URL="$qdrant_url" \
                      QDRANT_PORT="$qdrant_port" \
                      QDRANT_COLLECTION="$qdrant_collection" \
@@ -210,21 +195,6 @@ deploy_container_app() {
       --max-replicas "$MAX_REPLICAS" \
       --ingress external \
       --target-port 8000 \
-      --startup-probe-path "/health" \
-      --startup-probe-port 8000 \
-      --startup-probe-transport "HTTP" \
-      --startup-probe-initial-delay-seconds 5 \
-      --startup-probe-period-seconds 10 \
-      --startup-probe-failure-threshold 15 \
-      --readiness-probe-path "/health" \
-      --readiness-probe-port 8000 \
-      --readiness-probe-transport "HTTP" \
-      --readiness-probe-period-seconds 10 \
-      --liveness-probe-path "/health" \
-      --liveness-probe-port 8000 \
-      --liveness-probe-transport "HTTP" \
-      --liveness-probe-period-seconds 20 \
-      --liveness-probe-failure-threshold 3 \
       --env-vars QDRANT_URL="$qdrant_url" \
                  QDRANT_PORT="$qdrant_port" \
                  QDRANT_COLLECTION="$qdrant_collection" \
