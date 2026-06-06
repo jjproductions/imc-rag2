@@ -11,8 +11,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Load .env if it exists locally for convenient local execution
-if [[ -f "$PROJECT_ROOT/.env" ]]; then
+# Load .env if it exists locally and not running in CI/CD for convenient local execution
+if [[ -z "${GITHUB_ACTIONS:-}" && -f "$PROJECT_ROOT/.env" ]]; then
   echo "Loading local environment variables from .env..."
   # Export variables from .env (ignoring comments)
   export $(grep -v '^#' "$PROJECT_ROOT/.env" | xargs)
@@ -28,7 +28,7 @@ IMAGE_NAME="${IMAGE_NAME:-imc-rag-api}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 CPU="${CPU:-0.5}"
 MEMORY="${MEMORY:-1.0Gi}"
-MIN_REPLICAS="${MIN_REPLICAS:-0}"
+MIN_REPLICAS="${MIN_REPLICAS:-1}"
 MAX_REPLICAS="${MAX_REPLICAS:-3}"
 
 ACR_LOGIN_SERVER="${ACR_NAME}.azurecr.io"
@@ -149,6 +149,28 @@ deploy_container_app() {
     # App exists, perform an in-place update of the image and configuration
     log "Container App '$CONTAINER_APP_NAME' exists. Triggering image and config update (rolling revision deployment)..."
     
+    # Dynamically build env vars list to avoid overwriting secrets with empty/unset values
+    local env_vars=()
+    env_vars+=("QDRANT_URL=$qdrant_url")
+    env_vars+=("QDRANT_PORT=$qdrant_port")
+    env_vars+=("QDRANT_COLLECTION=$qdrant_collection")
+    env_vars+=("API_KEY=$api_key")
+    env_vars+=("LLM_PROVIDER=$llm_provider")
+    env_vars+=("AZURE_OPENAI_API_VERSION=$aoai_version")
+    env_vars+=("AZURE_OPENAI_DEPLOYMENT_NAME=$aoai_deployment")
+    env_vars+=("EMBEDDING_MODEL=$embedding_model")
+    env_vars+=("TRANSFORMERS_OFFLINE=$transformers_offline")
+    env_vars+=("HF_HUB_OFFLINE=$hf_hub_offline")
+    env_vars+=("TORCH_NUM_THREADS=$torch_num_threads")
+    env_vars+=("HF_HOME=$hf_home")
+
+    if [[ -n "$aoai_key" ]]; then
+      env_vars+=("AZURE_OPENAI_API_KEY=$aoai_key")
+    fi
+    if [[ -n "$aoai_endpoint" ]]; then
+      env_vars+=("AZURE_OPENAI_ENDPOINT=$aoai_endpoint")
+    fi
+
     az containerapp update \
       --name "$CONTAINER_APP_NAME" \
       --resource-group "$RESOURCE_GROUP" \
@@ -157,20 +179,7 @@ deploy_container_app() {
       --memory "$MEMORY" \
       --min-replicas "$MIN_REPLICAS" \
       --max-replicas "$MAX_REPLICAS" \
-      --set-env-vars QDRANT_URL="$qdrant_url" \
-                     QDRANT_PORT="$qdrant_port" \
-                     QDRANT_COLLECTION="$qdrant_collection" \
-                     API_KEY="$api_key" \
-                     LLM_PROVIDER="$llm_provider" \
-                     AZURE_OPENAI_API_KEY="$aoai_key" \
-                     AZURE_OPENAI_ENDPOINT="$aoai_endpoint" \
-                     AZURE_OPENAI_API_VERSION="$aoai_version" \
-                     AZURE_OPENAI_DEPLOYMENT_NAME="$aoai_deployment" \
-                     EMBEDDING_MODEL="$embedding_model" \
-                     TRANSFORMERS_OFFLINE="$transformers_offline" \
-                     HF_HUB_OFFLINE="$hf_hub_offline" \
-                     TORCH_NUM_THREADS="$torch_num_threads" \
-                     HF_HOME="$hf_home"
+      --set-env-vars "${env_vars[@]}"
       
     log "Rolling deployment triggered successfully!"
   else
