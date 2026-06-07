@@ -377,11 +377,15 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
 
     # 3) STREAMING PATH
     if req.stream:
-        logger.debug("Processing streaming OpenAI chat completion request. Time taken: %s", int((time.time() - start) * 1000))
+        logger.info(f"Processing streaming OpenAI chat completion request. Cache key payload: {json.dumps(cache_key)}")
 
         # If this exact turn already completed (rare but possible on retries),
         # you could serve the cached text as a single delta stream.
         cached = await answer_cache.get(cache_key)
+        if cached is not None:
+            logger.info(f"Stream Cache HIT! Found cached response for key.")
+        else:
+            logger.info(f"Stream Cache MISS! No cached response found for key.")
 
         async def gen():
             # Initial padding to force flush any proxy buffers
@@ -523,13 +527,14 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
         )
 
     # 4) NON‑STREAMING PATH — return cached answer if available
-    logger.debug("Processing non-streaming OpenAI chat completion request")
+    logger.info(f"Processing non-streaming OpenAI chat completion request. Cache key payload: {json.dumps(cache_key)}")
     cached = await answer_cache.get(cache_key)
     if cached is not None:
+        logger.info(f"Non-stream Cache HIT! Returning cached response.")
         content = cached
     else:
         # Fallback: run once (this will be rare if the stream path ran first)
-        logger.debug("No cached answer found for non-streaming request, running LLM once")
+        logger.info("Non-stream Cache MISS! No cached answer found, running LLM once.")
         resp = await client.chat_once(
             model=model,
             messages=messages,

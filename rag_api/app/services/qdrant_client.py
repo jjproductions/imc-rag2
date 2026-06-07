@@ -23,8 +23,13 @@ def get_qdrant() -> QdrantClient:
         logger.error(f"Failed to connect to Qdrant: {str(e)}")
         raise
 
+_collection_ensured = False
+
 def ensure_collection(client: QdrantClient):
     """Check if collection exists and create it if not."""
+    global _collection_ensured
+    if _collection_ensured:
+        return
     try:
         collections = [c.name for c in client.get_collections().collections]
         if settings.QDRANT_COLLECTION not in collections:
@@ -47,6 +52,7 @@ def ensure_collection(client: QdrantClient):
             logger.info(f"Collection '{settings.QDRANT_COLLECTION}' created successfully.")
         else:
             logger.debug(f"Collection '{settings.QDRANT_COLLECTION}' already exists.")
+        _collection_ensured = True
     except Exception as e:
         logger.error(f"Error ensuring Qdrant collection: {str(e)}")
         raise
