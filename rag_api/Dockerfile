@@ -22,7 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Bake models directly into the image to eliminate cold-start latency
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-m3', trust_remote_code=True); from fastembed import SparseTextEmbedding; SparseTextEmbedding(model_name='prithivida/Splade_PP_en_v1', cache_dir='/models/fastembed')"
+RUN python -c "from fastembed import TextEmbedding, SparseTextEmbedding; TextEmbedding(model_name='BAAI/bge-large-en-v1.5', cache_dir='/models/fastembed'); SparseTextEmbedding(model_name='prithivida/Splade_PP_en_v1', cache_dir='/models/fastembed')"
 
 # Enforce strict offline mode at runtime to eliminate Hugging Face Hub metadata lookups
 ENV TRANSFORMERS_OFFLINE=1 \

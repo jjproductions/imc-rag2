@@ -128,7 +128,7 @@ deploy_container_app() {
   local aoai_endpoint="${AZURE_OPENAI_ENDPOINT:-}"
   local aoai_version="${AZURE_OPENAI_API_VERSION:-2024-08-01-preview}"
   local aoai_deployment="${AZURE_OPENAI_DEPLOYMENT_NAME:-gpt-4o-mini}"
-  local embedding_model="${EMBEDDING_MODEL:-BAAI/bge-m3}"
+  local embedding_model="${EMBEDDING_MODEL:-BAAI/bge-large-en-v1.5}"
   local transformers_offline="${TRANSFORMERS_OFFLINE:-1}"
   local hf_hub_offline="${HF_HUB_OFFLINE:-1}"
   local torch_num_threads="${TORCH_NUM_THREADS:-1}"

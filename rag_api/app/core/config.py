@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "imc_corpus_hybrid"
     QDRANT_TIMEOUT: float = 30.0
 
-    EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    EMBEDDING_MODEL: str = "BAAI/bge-large-en-v1.5"
 
     # LLM general settings
     LLM_PROVIDER: str = "azure_openai"  # "azure_openai" or "ollama"
