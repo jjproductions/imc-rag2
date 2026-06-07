@@ -133,6 +133,7 @@ deploy_container_app() {
   local hf_hub_offline="${HF_HUB_OFFLINE:-1}"
   local torch_num_threads="${TORCH_NUM_THREADS:-1}"
   local hf_home="${HF_HOME:-/models}"
+  local doc_base_url="${DOC_BASE_URL:-}"
   
   log "Verifying Resource Group '$RESOURCE_GROUP' exists..."
   if ! az group show --name "$RESOURCE_GROUP" &>/dev/null; then
@@ -169,6 +170,9 @@ deploy_container_app() {
     fi
     if [[ -n "$aoai_endpoint" ]]; then
       env_vars+=("AZURE_OPENAI_ENDPOINT=$aoai_endpoint")
+    fi
+    if [[ -n "$doc_base_url" ]]; then
+      env_vars+=("DOC_BASE_URL=$doc_base_url")
     fi
 
     az containerapp update \
@@ -217,7 +221,8 @@ deploy_container_app() {
                  TRANSFORMERS_OFFLINE="$transformers_offline" \
                  HF_HUB_OFFLINE="$hf_hub_offline" \
                  TORCH_NUM_THREADS="$torch_num_threads" \
-                 HF_HOME="$hf_home"
+                 HF_HOME="$hf_home" \
+                 DOC_BASE_URL="$doc_base_url"
                   
     log "Container App '$CONTAINER_APP_NAME' created and deployed successfully!"
   fi

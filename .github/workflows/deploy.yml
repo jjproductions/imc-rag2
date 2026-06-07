@@ -18,6 +18,7 @@ env:
   ENV_NAME: "imc-rag-env"
   CONTAINER_APP_NAME: "rag-api-app"
   IMAGE_NAME: "imc-rag-api"
+  DOC_BASE_URL: "https://instituteofmusic.sharepoint.com/sites/PoliciesProcedures/Policies"
 
 jobs:
   deploy:
@@ -77,3 +78,4 @@ jobs:
           ENV_NAME: ${{ env.ENV_NAME }}
           CONTAINER_APP_NAME: ${{ env.CONTAINER_APP_NAME }}
           IMAGE_TAG: ${{ github.sha }}
+          DOC_BASE_URL: ${{ env.DOC_BASE_URL }}

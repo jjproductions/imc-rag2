@@ -136,7 +136,8 @@ az containerapp create \
              AZURE_OPENAI_ENDPOINT="$AZURE_OPENAI_ENDPOINT" \
              AZURE_OPENAI_API_VERSION="2024-07-18" \
              AZURE_OPENAI_DEPLOYMENT_NAME="gpt-4o-mini" \
-             EMBEDDING_MODEL="BAAI/bge-m3"
+             EMBEDDING_MODEL="BAAI/bge-m3" \
+             DOC_BASE_URL="https://instituteofmusic.sharepoint.com/sites/PoliciesProcedures/Policies"
 ```
 
 ## 5. Deploy OpenWeb UI (Frontend)
