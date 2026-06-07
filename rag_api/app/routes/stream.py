@@ -26,7 +26,24 @@ router = APIRouter(prefix="", tags=["stream"])
 async def stream(req: StreamRequest):
     top_k = req.top_k or settings.TOP_K
     trace_id = req.trace_id or str(uuid.uuid4())
-    chunks = search_similar(req.question, top_k=top_k)
+    try:
+        chunks = search_similar(req.question, top_k=top_k)
+    except Exception as e:
+        logger.error(f"Error during similar search in /stream: {e}", exc_info=True)
+        fallback_msg = "I am sorry, but the document database is temporarily unavailable. Please try again later."
+        async def error_generator() -> AsyncGenerator[Dict[str, Any], None]:
+            yield {
+                "event": "token",
+                "data": json.dumps({"delta": fallback_msg, "trace_id": trace_id}),
+            }
+            yield {
+                "event": "complete",
+                "data": json.dumps(
+                    {"complete": True, "usage": {"top_k": top_k, "latency_ms": 0}, "trace_id": trace_id}
+                ),
+            }
+        return EventSourceResponse(error_generator(), media_type="text/event-stream")
+
     messages = build_messages(req.question, chunks)
     
     client = get_llm_client()
@@ -229,8 +246,49 @@ async def websocket_chat_completions(websocket: WebSocket):
         )
         chunks = await retrieval_cache.get(retrieval_key)
         if chunks is None:
-            chunks = search_similar(parsed_message, top_k=top_k)
-            await retrieval_cache.set(retrieval_key, chunks)
+            try:
+                chunks = search_similar(parsed_message, top_k=top_k)
+                await retrieval_cache.set(retrieval_key, chunks)
+            except Exception as e:
+                logger.error(f"WebSocket similar search error: {e}", exc_info=True)
+                fallback_msg = "I am sorry, but the document database is temporarily unavailable. Please try again later."
+                model = req.model or settings.ACTIVE_LLM_MODEL
+                comp_id = f"chatcmpl-{uuid.uuid4().hex}"
+                created = int(time.time())
+                # Send initial role chunk
+                await websocket.send_text(json.dumps({
+                    "id": comp_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": model,
+                    "choices": [
+                        {"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}
+                    ],
+                }))
+                # Send error message chunk
+                await websocket.send_text(json.dumps({
+                    "id": comp_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": fallback_msg},
+                            "finish_reason": None,
+                        }
+                    ],
+                }))
+                # Send finish chunk
+                await websocket.send_text(json.dumps({
+                    "id": comp_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                }))
+                await websocket.close()
+                return
 
         messages = build_messages(last_user, chunks)
         
@@ -355,8 +413,52 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
     )
     chunks = await retrieval_cache.get(retrieval_key)
     if chunks is None:
-        chunks = search_similar(parsed_message, top_k=top_k)
-        await retrieval_cache.set(retrieval_key, chunks)
+        try:
+            chunks = search_similar(parsed_message, top_k=top_k)
+            await retrieval_cache.set(retrieval_key, chunks)
+        except Exception as e:
+            logger.error(f"Error during similar search: {e}", exc_info=True)
+            fallback_msg = "I am sorry, but the document database is temporarily unavailable. Please try again later."
+            model = req.model or settings.ACTIVE_LLM_MODEL
+            comp_id = f"chatcmpl-{uuid.uuid4().hex}"
+            created = int(time.time())
+            
+            if req.stream:
+                async def error_gen():
+                    # Yield initial role chunk
+                    yield f"data: {json.dumps({'id': comp_id, 'object': 'chat.completion.chunk', 'created': created, 'model': model, 'choices': [{'index': 0, 'delta': {'role': 'assistant'}, 'finish_reason': None}]})}\n\n"
+                    # Yield error message chunk
+                    yield f"data: {json.dumps({'id': comp_id, 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model, 'choices': [{'index': 0, 'delta': {'content': fallback_msg}, 'finish_reason': None}]})}\n\n"
+                    # Yield done chunk
+                    yield f"data: {json.dumps({'id': comp_id, 'object': 'chat.completion.chunk', 'created': int(time.time()), 'model': model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n"
+                    yield "data: [DONE]\n\n"
+                
+                return StreamingResponse(
+                    error_gen(),
+                    media_type="text/event-stream; charset=utf-8",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                        "Content-Type": "text/event-stream; charset=utf-8",
+                        "X-Content-Type-Options": "nosniff",
+                    },
+                )
+            else:
+                return JSONResponse(content={
+                    "id": comp_id,
+                    "object": "chat.completion",
+                    "created": created,
+                    "model": model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {"role": "assistant", "content": fallback_msg},
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                })
 
     messages = build_messages(last_user, chunks)
 

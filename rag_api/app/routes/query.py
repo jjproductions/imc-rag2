@@ -15,7 +15,17 @@ router = APIRouter(prefix="", tags=["query"])
 async def query(req: QueryRequest) -> AnswerResponse:
     t0 = time.time()
     top_k = req.top_k or settings.TOP_K
-    chunks = search_similar(req.question, top_k=top_k)
+    try:
+        chunks = search_similar(req.question, top_k=top_k)
+    except Exception as e:
+        logger.error(f"Error during similar search: {e}", exc_info=True)
+        usage = {
+            "top_k": top_k,
+            "latency_ms": int((time.time() - t0) * 1000),
+        }
+        fallback_msg = "I am sorry, but the document database is temporarily unavailable. Please try again later."
+        return AnswerResponse(answer=fallback_msg, sources=[], usage=usage)
+    
     messages = build_messages(req.question, chunks)
     
     client = get_llm_client()
