@@ -350,7 +350,12 @@ async def websocket_chat_completions(websocket: WebSocket):
                 await asyncio.sleep(0)
 
         # Sources Block
-        sources_block = format_sources_block(used_doc_ids, all_sources)
+        assembled_text = "".join(assembled)
+        normalized_assembled = assembled_text.lower()
+        if "don't know" in normalized_assembled or "do not know" in normalized_assembled:
+            sources_block = ""
+        else:
+            sources_block = format_sources_block(used_doc_ids, all_sources)
         if sources_block:
             chunk = {
                 "id": comp_id,
@@ -573,7 +578,12 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
                     await anyio.sleep(0)
 
             # Append final Sources block once
-            sources_block = format_sources_block(used_doc_ids, all_sources)
+            assembled_text = "".join(assembled)
+            normalized_assembled = assembled_text.lower()
+            if "don't know" in normalized_assembled or "do not know" in normalized_assembled:
+                sources_block = ""
+            else:
+                sources_block = format_sources_block(used_doc_ids, all_sources)
             logger.debug("Sources block: %s ; Time taken: %s", sources_block, int((time.time() - start) * 1000))
             if sources_block:
                 assembled.append("\n\n" + sources_block)
@@ -646,8 +656,12 @@ async def openai_chat_completions(req: OpenAIChatCompletionRequest, request: Req
         raw = resp.get("message", {}).get("content", "") or ""
         content = INLINE_SOURCE_RE.sub("", raw)
         # Optionally append sources (same rules as streaming)
-        all_sources = collect_sources(chunks)
-        sources_block = format_sources_block(list(all_sources.keys()), all_sources)
+        normalized_content = content.lower()
+        if "don't know" in normalized_content or "do not know" in normalized_content:
+            sources_block = ""
+        else:
+            all_sources = collect_sources(chunks)
+            sources_block = format_sources_block(list(all_sources.keys()), all_sources)
         if sources_block:
             content = content.rstrip() + "\n\n" + sources_block
         await answer_cache.set(cache_key, content)  # seed cache for future retries
