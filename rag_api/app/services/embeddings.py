@@ -2,8 +2,7 @@ import threading
 import logging
 from typing import List, Tuple, Any
 import numpy as np
-from sentence_transformers import SentenceTransformer
-from fastembed import SparseTextEmbedding
+from fastembed import TextEmbedding, SparseTextEmbedding
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -14,8 +13,8 @@ _sparse_model = None
 
 def _load_models():
     try:
-        logger.info(f"Loading dense embedding model: {settings.EMBEDDING_MODEL}")
-        dense = SentenceTransformer(settings.EMBEDDING_MODEL, trust_remote_code=True)
+        logger.info(f"Loading dense embedding model: {settings.EMBEDDING_MODEL} (cache_dir={settings.FASTEMBED_CACHE_PATH})")
+        dense = TextEmbedding(model_name=settings.EMBEDDING_MODEL, cache_dir=settings.FASTEMBED_CACHE_PATH)
         
         logger.info(f"Loading sparse embedding model: prithivida/Splade_PP_en_v1 (cache_dir={settings.FASTEMBED_CACHE_PATH})")
         sparse = SparseTextEmbedding(model_name="prithivida/Splade_PP_en_v1", cache_dir=settings.FASTEMBED_CACHE_PATH)
@@ -38,16 +37,13 @@ def embed_texts(texts: List[str]) -> Tuple[np.ndarray, List[Any]]:
         dense_model, sparse_model = get_models()
         logger.debug(f"Encoding {len(texts)} texts...")
         
-        embs = dense_model.encode(
-            texts,
-            batch_size=32,
-            convert_to_numpy=True,
-            normalize_embeddings=True,  # L2 normalizes
-            show_progress_bar=False
-        )
+        # TextEmbedding.embed returns a generator of numpy arrays
+        dense_gen = dense_model.embed(texts, batch_size=32)
+        embs = np.array(list(dense_gen), dtype=np.float32)
         
-        if embs.dtype != np.float32:
-            embs = embs.astype(np.float32)
+        # Ensure L2 normalization (BGE model outputs from FastEmbed are pre-normalized, but this acts as a safeguard)
+        norms = np.linalg.norm(embs, axis=1, keepdims=True)
+        embs = np.divide(embs, norms, out=embs, where=norms > 0)
             
         sparse_list = list(sparse_model.embed(texts, batch_size=32))
 

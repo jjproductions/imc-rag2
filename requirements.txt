@@ -12,7 +12,6 @@ pydantic-settings
 orjson
 
 # Embeddings
-sentence-transformers
 numpy
 fastembed
 
